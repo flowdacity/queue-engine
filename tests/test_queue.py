@@ -3,19 +3,19 @@
 import os
 import unittest
 from datetime import date
-from sharq import SharQ
-from sharq.exceptions import BadArgumentException
+from engine import FQ
+from engine.exceptions import BadArgumentException
 
 
-class SharQTest(unittest.TestCase):
-    """ The SharQTest contains test cases which
-    validate the SharQ interface.
+class FQTest(unittest.TestCase):
+    """ The FQTest contains test cases which
+    validate the FQ interface.
     """
 
     def setUp(self):
         cwd = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(cwd, 'sharq.test.conf')  # test config
-        self.queue = SharQ(config_path)
+        config_path = os.path.join(cwd, 'test.conf')  # test config
+        self.queue = FQ(config_path)
 
         self.valid_queue_type = '5m5_qu-eue'
         self.invalid_queue_type_1 = 's!ms_queue'

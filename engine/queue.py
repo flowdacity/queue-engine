@@ -1,10 +1,14 @@
+# -*- coding: utf-8 -*-
+# Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
+#  Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
+
 import os
 import configparser
 
 from redis.asyncio import Redis
 from redis.asyncio.cluster import RedisCluster
 
-from sharq.utils import (
+from engine.utils import (
     is_valid_identifier,
     is_valid_interval,
     is_valid_requeue_limit,
@@ -13,12 +17,12 @@ from sharq.utils import (
     deserialize_payload,
     convert_to_str,
 )
-from sharq.exceptions import SharqException, BadArgumentException
+from engine.exceptions import FQException, BadArgumentException
 
 
-class SharQ(object):
-    """The SharQ object is the core of this queue.
-    SharQ does the following.
+class FQ(object):
+    """The FQ object is the core of this queue.
+    FQ does the following.
 
         1. Accepts a configuration file.
         2. Initializes the queue.
@@ -26,7 +30,7 @@ class SharQ(object):
     """
 
     def __init__(self, config_path):
-        """Construct a SharQ object by doing the following.
+        """Construct a FQ object by doing the following.
         1. Read the configuration path.
         2. Load the config.
         """
@@ -35,14 +39,14 @@ class SharQ(object):
         self._r = None  # redis client placeholder
 
     async def _initialize(self):
-        """Read the SharQ configuration and set up redis + Lua scripts."""
+        """Read the FQ configuration and set up redis + Lua scripts."""
 
         self._key_prefix = self._config.get("redis", "key_prefix")
         self._job_expire_interval = int(
-            self._config.get("sharq", "job_expire_interval")
+            self._config.get("fq", "job_expire_interval")
         )
         self._default_job_requeue_limit = int(
-            self._config.get("sharq", "default_job_requeue_limit")
+            self._config.get("fq", "default_job_requeue_limit")
         )
 
         redis_connection_type = self._config.get("redis", "conn_type")
@@ -78,13 +82,13 @@ class SharQ(object):
                     password=self._config.get("redis", "password"),
                 )
         else:
-            raise SharqException("Unknown redis conn_type: %s" % redis_connection_type)
+            raise FQException("Unknown redis conn_type: %s" % redis_connection_type)
 
         await self._load_lua_scripts()
 
     def _load_config(self):
         """Read the configuration file and load it into memory."""
-        self._config = configparser.SafeConfigParser()
+        self._config = configparser.ConfigParser()
         self._config.read(self.config_path)
 
     def redis_client(self):
@@ -99,7 +103,7 @@ class SharQ(object):
         self._load_config()
 
     def _load_lua_scripts(self):
-        """Loads all lua scripts required by SharQ."""
+        """Loads all lua scripts required by FQ."""
         # load lua scripts
         lua_script_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "scripts/lua"
@@ -217,7 +221,7 @@ class SharQ(object):
     async def finish(self, job_id, queue_id, queue_type="default"):
         """Marks any dequeued job as *completed successfully*.
         Any job which gets a finish will be treated as complete
-        and will be removed from the SharQ.
+        and will be removed from the FQ.
         """
         if not is_valid_identifier(job_id):
             raise BadArgumentException("`job_id` has an invalid value.")
@@ -418,7 +422,7 @@ class SharQ(object):
         :return: value or None
         """
         return await self._r.set(
-            "sharq:deep_status:{}".format(self._key_prefix), "sharq_deep_status"
+            "fq:deep_status:{}".format(self._key_prefix), "sharq_deep_status"
         )
 
     async def clear_queue(self, queue_type=None, queue_id=None, purge_all=False):

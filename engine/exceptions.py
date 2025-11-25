@@ -2,9 +2,9 @@
 # Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
 
 
-class SharqException(Exception):
+class FQException(Exception):
     pass
 
 
-class BadArgumentException(SharqException):
+class BadArgumentException(FQException):
     pass
