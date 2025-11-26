@@ -7,7 +7,6 @@ license = {text = "MIT"}
 authors = [{name = "Ochui Princewill", email = "ochui@flowdacity.com"}]
 requires-python = ">=3.12"
 dependencies = [
-    "argparse>=1.4.0",
     "msgpack>=1.1.2",
     "redis[hiredis]>=7.1.0",
 ]
@@ -24,11 +23,11 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/fq"]
+packages = ["fq"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "src/fd",
+  "src/fq",
   "README.md",
   "LICENSE.txt",
 ]
