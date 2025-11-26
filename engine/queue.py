@@ -457,10 +457,15 @@ class FQ(object):
             for job_uuid in job_list:
                 if job_uuid is None:
                     continue
+                if isinstance(job_uuid, bytes):
+                    job_uuid_str = job_uuid.decode("utf-8")
+                else:
+                    job_uuid_str = job_uuid
                 payload_set = "{}:payload".format(self._key_prefix)
-                job_payload_key = "{}:{}:{}".format(queue_type, queue_id, job_uuid)
+                job_payload_key = "{}:{}:{}".format(queue_type, queue_id, job_uuid_str)
                 pipe.hdel(payload_set, job_payload_key)
-            # clear jobrequest interval
+
+            # clear job request interval
             interval_set = "{}:interval".format(self._key_prefix)
             job_interval_key = "{}:{}".format(queue_type, queue_id)
             pipe.hdel(interval_set, job_interval_key)
