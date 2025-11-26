@@ -1,4 +1,4 @@
-.PHONY: all clean build install uninstall test redis redis-down
+.PHONY: all clean build install uninstall test publish redis redis-down
 
 # Default target
 all: clean build
@@ -31,6 +31,13 @@ test:
 		python -m tests.test_queue; \
 		python -m tests.test_func; \
 	fi
+
+publish: clean
+	uv sync --group dev
+	uv run python -m build
+# 	@if [ -z "$$PYPI_API_TOKEN" ]; then echo "PYPI_API_TOKEN must be set"; exit 1; fi
+# 	uv run python -m twine upload dist/* -u __token__ -p "$$PYPI_API_TOKEN"
+	uv run python -m twine upload dist/*
 
 # Start Redis container
 redis:
