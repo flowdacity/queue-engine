@@ -8,7 +8,8 @@ import asyncio
 import unittest
 import msgpack
 from engine import FQ
-from engine.utils import generate_epoch
+from engine.utils import generate_epoch, deserialize_payload
+
 
 
 class FQTestCase(unittest.IsolatedAsyncioTestCase):
@@ -135,7 +136,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             job_id,
         )
         raw_payload = await self.queue._r.hget(payload_map_name, payload_map_key)
-        payload = msgpack.unpackb(raw_payload[1:-1])
+        payload = deserialize_payload(raw_payload)
         self.assertEqual(payload, self._test_payload_1)
 
     async def test_enqueue_interval_map_existence(self):
@@ -482,7 +483,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             job_id,
         )
         raw_payload = await self.queue._r.hget(payload_map_name, payload_map_key)
-        payload = msgpack.unpackb(raw_payload[1:-1])
+        payload = deserialize_payload(raw_payload)
         self.assertEqual(payload, self._test_payload_2)
 
     async def test_enqueue_second_job_interval_map_existence(self):
@@ -1628,9 +1629,9 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         queue_clear_response = await self.queue.clear_queue(
             queue_type=self._test_queue_type, queue_id=self._test_queue_id
         )
-        self.assertEqual(queue_clear_response["status"], "success")
+        self.assertEqual(queue_clear_response["status"], "Success")
         self.assertEqual(
-            queue_clear_response["message"], "successfully removed all queued calls"
+            queue_clear_response["message"], "Successfully removed all queued calls"
         )
 
         job_queue_list = "%s:%s:%s" % (
@@ -1657,10 +1658,10 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             queue_id=self._test_queue_id,
             purge_all=True,
         )
-        self.assertEqual(queue_clear_response["status"], "success")
+        self.assertEqual(queue_clear_response["status"], "Success")
         self.assertEqual(
             queue_clear_response["message"],
-            "successfully removed all queued calls and purged related resources",
+            "Successfully removed all queued calls and purged related resources",
         )
 
         job_queue_list = "%s:%s:%s" % (
@@ -1692,7 +1693,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         queue_clear_response = await self.queue.clear_queue(
             queue_type=self._test2_queue_type, queue_id=self._test2_queue_id
         )
-        self.assertEqual(queue_clear_response["status"], "failure")
+        self.assertEqual(queue_clear_response["status"], "Failure")
         self.assertEqual(queue_clear_response["message"], "No queued calls found")
 
     async def test_clear_queue_with_non_existing_queue_id_with_purge(self):
@@ -1701,7 +1702,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             queue_id=self._test2_queue_id,
             purge_all=True,
         )
-        self.assertEqual(queue_clear_response["status"], "failure")
+        self.assertEqual(queue_clear_response["status"], "Failure")
         self.assertEqual(queue_clear_response["message"], "No queued calls found")
 
     async def asyncTearDown(self):
