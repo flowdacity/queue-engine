@@ -86,6 +86,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             self._test_queue_id,
         )
         latest_job_id = await self.queue._r.lrange(queue_name, -1, -1)
+        latest_job_id = [jid.decode("utf-8") for jid in latest_job_id]
         self.assertEqual(latest_job_id, [job_id])
 
     async def test_enqueue_job_queue_length(self):
@@ -165,6 +166,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         interval_map_name = "%s:interval" % (self.queue._key_prefix)
         interval_map_key = "%s:%s" % (self._test_queue_type, self._test_queue_id)
         interval = await self.queue._r.hget(interval_map_name, interval_map_key)
+        interval = interval.decode("utf-8")
         self.assertEqual(interval, "10000")
 
     async def test_enqueue_requeue_limit_map_existence(self):
@@ -214,6 +216,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             self._test_queue_id,
         )
         requeues_remaining = await self.queue._r.hget(requeue_limit_map_name, job_id)
+        requeues_remaining = requeues_remaining.decode("utf-8")
         self.assertEqual(requeues_remaining, "-1")
 
         # with requeue_limit passed explicitly
@@ -228,6 +231,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
         requeues_remaining = await self.queue._r.hget(requeue_limit_map_name, job_id)
+        requeues_remaining = requeues_remaining.decode("utf-8")
         self.assertEqual(requeues_remaining, "5")
 
     async def test_enqueue_ready_set(self):
@@ -259,6 +263,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         queue_id_list = await self.queue._r.zrangebyscore(
             sorted_set_name, start_time, end_time
         )
+        queue_id_list = [qid.decode("utf-8") for qid in queue_id_list]
         self.assertEqual(len(queue_id_list), 1)
         self.assertEqual(queue_id_list[0], self._test_queue_id)
 
@@ -275,6 +280,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         queue_type_ready_set = await self.queue._r.smembers(
             "%s:ready:queue_type" % self.queue._key_prefix
         )
+        queue_type_ready_set = {v.decode("utf-8") for v in queue_type_ready_set}
         self.assertEqual(len(queue_type_ready_set), 1)
         self.assertEqual(queue_type_ready_set.pop(), self._test_queue_type)
 
@@ -307,6 +313,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         counter_value = await self.queue._r.get(
             "%s:enqueue_counter:%s" % (self.queue._key_prefix, timestamp_minute)
         )
+        counter_value = counter_value.decode("utf-8")
         self.assertEqual(counter_value, "1")
 
     async def test_enqueue_metrics_per_queue_enqueue_counter(self):
@@ -331,6 +338,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
                 timestamp_minute,
             )
         )
+        counter_value = counter_value.decode("utf-8")
         self.assertEqual(counter_value, "1")
 
     async def test_enqueue_second_job_status(self):
@@ -405,6 +413,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             self._test_queue_id,
         )
         latest_job_id = await self.queue._r.lrange(queue_name, -1, -1)
+        latest_job_id = [jid.decode("utf-8") for jid in latest_job_id]
         self.assertEqual(latest_job_id, [job_id])
 
     async def test_enqueue_second_job_queue_length(self):
@@ -531,6 +540,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         interval_map_name = "%s:interval" % (self.queue._key_prefix)
         interval_map_key = "%s:%s" % (self._test_queue_type, self._test_queue_id)
         interval = await self.queue._r.hget(interval_map_name, interval_map_key)
+        interval = interval.decode("utf-8")
         self.assertEqual(interval, "20000")
 
     async def test_enqueue_second_job_ready_set(self):
@@ -608,6 +618,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         queue_type_ready_set = await self.queue._r.smembers(
             "%s:ready:queue_type" % self.queue._key_prefix
         )
+        queue_type_ready_set = {v.decode("utf-8") for v in queue_type_ready_set}
         self.assertEqual(len(queue_type_ready_set), 1)
         self.assertEqual(queue_type_ready_set.pop(), self._test_queue_type)
 
@@ -796,6 +807,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         queue_type_active_set = await self.queue._r.smembers(
             "%s:active:queue_type" % self.queue._key_prefix
         )
+        queue_type_active_set = {v.decode("utf-8") for v in queue_type_active_set}
         self.assertEqual(len(queue_type_active_set), 1)
         self.assertEqual(queue_type_active_set.pop(), self._test_queue_type)
 
@@ -815,6 +827,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         counter_value = await self.queue._r.get(
             "%s:dequeue_counter:%s" % (self.queue._key_prefix, timestamp_minute)
         )
+        counter_value = counter_value.decode("utf-8")
         self.assertEqual(counter_value, "1")
 
     async def test_dequeue_metrics_per_queue_dequeue_counter(self):
@@ -839,6 +852,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
                 timestamp_minute,
             )
         )
+        counter_value = counter_value.decode("utf-8")
         self.assertEqual(counter_value, "1")
 
     async def test_finish_on_empty_queue(self):
@@ -1097,6 +1111,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         queue_type_ready_set = await self.queue._r.smembers(
             "%s:ready:queue_type" % self.queue._key_prefix
         )
+        queue_type_ready_set = {v.decode("utf-8") for v in queue_type_ready_set}
         self.assertEqual(len(queue_type_ready_set), 1)
         self.assertEqual(queue_type_ready_set.pop(), self._test_queue_type)
 
@@ -1213,6 +1228,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
         interval_map_key = "%s:%s" % (self._test_queue_type, self._test_queue_id)
         interval = await self.queue._r.hget(interval_map_name, interval_map_key)
+        interval = interval.decode("utf-8")
         self.assertEqual(interval, "10000")
 
         response = await self.queue.interval(
@@ -1224,6 +1240,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await self.queue._r.exists(interval_map_name))
         interval = await self.queue._r.hget(interval_map_name, interval_map_key)
+        interval = interval.decode("utf-8")
         self.assertEqual(interval, "5000")
 
     async def test_metrics_response_status(self):
@@ -1641,6 +1658,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         primary_set = "%s:%s" % (self.queue._key_prefix, self._test_queue_type)
         primary_sorted_key = await self.queue._r.zrange(primary_set, 0, -1)
+        primary_sorted_key = [qid.decode("utf-8") for qid in primary_sorted_key]
         self.assertNotIn(self._test_queue_id, primary_sorted_key)
         self.assertFalse(await self.queue._r.exists(job_queue_list))
 
@@ -1680,6 +1698,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         job_interval_key = "%s:%s" % (self._test_queue_type, self._test_queue_id)
 
         primary_sorted_key = await self.queue._r.zrange(primary_set, 0, -1)
+        primary_sorted_key = [qid.decode("utf-8") for qid in primary_sorted_key]
         self.assertNotIn(self._test_queue_id, primary_sorted_key)
         self.assertFalse(
             await self.queue._r.hexists(payload_hashset, job_payload_key)
