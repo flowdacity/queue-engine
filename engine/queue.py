@@ -42,9 +42,7 @@ class FQ(object):
         """Read the FQ configuration and set up redis + Lua scripts."""
 
         self._key_prefix = self._config.get("redis", "key_prefix")
-        self._job_expire_interval = int(
-            self._config.get("fq", "job_expire_interval")
-        )
+        self._job_expire_interval = int(self._config.get("fq", "job_expire_interval"))
         self._default_job_requeue_limit = int(
             self._config.get("fq", "default_job_requeue_limit")
         )
@@ -84,7 +82,7 @@ class FQ(object):
         else:
             raise FQException("Unknown redis conn_type: %s" % redis_connection_type)
 
-        await self._load_lua_scripts()
+        self._load_lua_scripts()
 
     def _load_config(self):
         """Read the configuration file and load it into memory."""
@@ -477,7 +475,7 @@ class FQ(object):
             )
         else:
             # always delete the job queue list
-            self._r.delete(job_queue_list)
+            await self._r.delete(job_queue_list)
         return response
 
     async def get_queue_length(self, queue_type, queue_id):
@@ -496,3 +494,46 @@ class FQ(object):
         redis_key = self._key_prefix + ":" + queue_type + ":" + queue_id
         current_queue_length = await self._r.llen(redis_key)
         return current_queue_length
+
+    async def close(self):
+        """
+        Cleanly close the underlying Redis client / connection pool.
+
+        This is intended to be called by tests or by application shutdown
+        hooks to avoid ResourceWarning: unclosed <socket.socket ...>.
+        """
+        if self._r is None:
+            return
+
+        conn = self._r
+
+        # Prefer the asyncio-style aclose() if available (redis-py >= 4.2+)
+        aclose = getattr(conn, "aclose", None)
+        if callable(aclose):
+            await aclose()
+            self._r = None
+            return
+
+        # Older / alternate API: close() [+ wait_closed()]
+        close = getattr(conn, "close", None)
+        if callable(close):
+            maybe_coro = close()
+            if asyncio.iscoroutine(maybe_coro):
+                await maybe_coro
+
+        wait_closed = getattr(conn, "wait_closed", None)
+        if callable(wait_closed):
+            maybe_coro = wait_closed()
+            if asyncio.iscoroutine(maybe_coro):
+                await maybe_coro
+
+        # As a final fallback, disconnect the connection pool
+        pool = getattr(conn, "connection_pool", None)
+        if pool is not None:
+            disconnect = getattr(pool, "disconnect", None)
+            if callable(disconnect):
+                maybe_coro = disconnect()
+                if asyncio.iscoroutine(maybe_coro):
+                    await maybe_coro
+
+        self._r = None
