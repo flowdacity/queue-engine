@@ -23,7 +23,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["fq"]
+packages = ["src/fq"]
 
 [tool.hatch.build.targets.sdist]
 include = [
