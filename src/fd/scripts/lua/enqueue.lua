@@ -1,4 +1,4 @@
--- script to enqueue a job into sharq.
+-- script to enqueue a job into fq.
 
 -- input:
 --     KEYS[1] - <key_prefix>

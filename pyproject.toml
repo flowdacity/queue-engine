@@ -1,0 +1,33 @@
+[project]
+name = "flowdacity-queue"
+version = "0.1.0"
+description = "A simple Redis-based job queue system."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Ochui Princewill", email = "ochui@flowdacity.com"}]
+requires-python = ">=3.12"
+dependencies = [
+    "argparse>=1.4.0",
+    "msgpack>=1.1.2",
+    "redis[hiredis]>=7.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "build>=1.3.0",
+    "pytest>=9.0.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fd"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/fd",
+  "README.md",
+  "LICENSE.txt",
+]

@@ -3,7 +3,7 @@
 import time
 import msgpack
 
-VALID_IDENTIFIER_SET = set(list('abcdefghijklmnopqrstuvwxyz0123456789_-'))
+VALID_IDENTIFIER_SET = set(list("abcdefghijklmnopqrstuvwxyz0123456789_-"))
 
 
 def is_valid_identifier(identifier):
@@ -32,13 +32,7 @@ def is_valid_interval(interval):
     """Checks if the given interval is valid. A valid interval
     is always a positive, non-zero integer value.
     """
-    if not isinstance(interval, int):
-        return False
-
-    if interval < 0:
-        return False
-
-    return True
+    return isinstance(interval, int) and interval > 0
 
 
 def is_valid_requeue_limit(requeue_limit):
@@ -63,9 +57,8 @@ def serialize_payload(payload):
 
 
 def deserialize_payload(payload):
-    """Tries to deserialize the payload using msgpack.
-    """
-    # Handle older SharQ payloads as well (before py3 migration)
+    """Tries to deserialize the payload using msgpack."""
+    # Handle older FQ payloads as well (before py3 migration)
     if payload.startswith(b'"') and payload.endswith(b'"'):
         return msgpack.unpackb(payload[1:-1], raw=False)
 
@@ -73,8 +66,7 @@ def deserialize_payload(payload):
 
 
 def generate_epoch():
-    """Generates an unix epoch in ms.
-    """
+    """Generates an unix epoch in ms."""
     return int(time.time() * 1000)
 
 
@@ -83,7 +75,7 @@ def convert_to_str(queue_set):
     queue_list = []
     for queue in list(queue_set):
         try:
-            queue_list.append(queue.decode('utf-8'))
+            queue_list.append(queue.decode("utf-8"))
         except Exception as e:
             queue_list.append(queue)
             pass
