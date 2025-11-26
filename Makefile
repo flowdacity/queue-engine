@@ -20,7 +20,7 @@ install:
 
 # Uninstall FQ completely
 uninstall:
-	pip uninstall -y fq
+	pip uninstall -y flowdacity-queue
 
 # Run tests — prefers pytest, falls back to python modules
 test:
