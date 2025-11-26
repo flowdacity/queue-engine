@@ -1580,7 +1580,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(global_response["dequeue_counts"][old_1_timestamp_minute], 2)
         self.assertEqual(global_response["dequeue_counts"][old_2_timestamp_minute], 1)
 
-    async def test_sharq_rate_limiting(self):
+    async def test_fq_rate_limiting(self):
         job_id_1 = self._get_job_id()
         await self.queue.enqueue(
             payload=self._test_payload_1,

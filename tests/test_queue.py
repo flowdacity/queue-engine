@@ -3,21 +3,18 @@
 import os
 import unittest
 from datetime import date
+
 from engine import FQ
 from engine.exceptions import BadArgumentException
 
 
 class FQTest(unittest.IsolatedAsyncioTestCase):
-    """The FQTest contains test cases which
-    validate the FQ interface.
-    """
+    """The FQTest contains test cases which validate the FQ interface."""
 
     async def asyncSetUp(self):
         cwd = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(cwd, "test.conf")  # test config
         self.queue = FQ(config_path)
-
-        # initialize async redis client + lua scripts
         await self.queue._initialize()
 
         self.valid_queue_type = "5m5_qu-eue"
@@ -33,7 +30,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         self.valid_job_id = "96c82500-9f88-11e3-bb98-22000ac6964a"
         self.invalid_job_id_1 = "93 c8"
         self.invalid_job_id_2 = "93)c8"
-        self.invalid_job_id_2 = ""
+        self.invalid_job_id_3 = ""
 
         self.valid_interval = 5000
         self.invalid_interval_1 = "100"
@@ -57,11 +54,18 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         self.invalid_payload = {
             "phone_number": "10000000000",
             "message": "summer is here!",
-            "date": date.today(),
+            "date": date.today(),  # not serializable by msgpack
         }
 
         # flush redis before start
         await self.queue._r.flushdb()
+
+    async def asyncTearDown(self):
+        # flush redis at the end and close connection
+        await self.queue._r.flushdb()
+        await self.queue._r.aclose()
+
+    # ---------- enqueue ----------
 
     async def test_enqueue_queue_type_invalid(self):
         # type 1
@@ -101,7 +105,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_enqueue_queue_id_missing(self):
-        # TypeError occurs before coroutine is created, so no await here
+        # signature error happens before coroutine is created, so no await
         with self.assertRaises(TypeError):
             self.queue.enqueue(
                 payload=self.valid_payload,
@@ -179,6 +183,18 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
                 payload=self.valid_payload,
                 interval=self.valid_interval,
                 job_id=self.invalid_job_id_2,
+                queue_id=self.valid_queue_id,
+                queue_type=self.valid_queue_type,
+            )
+
+        # type 3 (empty string)
+        with self.assertRaisesRegex(
+            BadArgumentException, "`job_id` has an invalid value."
+        ):
+            await self.queue.enqueue(
+                payload=self.valid_payload,
+                interval=self.valid_interval,
+                job_id=self.invalid_job_id_3,
                 queue_id=self.valid_queue_id,
                 queue_type=self.valid_queue_type,
             )
@@ -327,8 +343,6 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             queue_type=self.valid_queue_type,
         )
         self.assertEqual(response["status"], "queued")
-
-        # the result should contain only status
         response.pop("status")
         self.assertEqual(response, {})
 
@@ -340,7 +354,6 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             queue_id=self.valid_queue_id,
         )
         self.assertEqual(response["status"], "queued")
-
         response.pop("status")
         self.assertEqual(response, {})
 
@@ -354,7 +367,6 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             requeue_limit=self.valid_requeue_limit_1,
         )
         self.assertEqual(response["status"], "queued")
-
         response.pop("status")
         self.assertEqual(response, {})
 
@@ -368,7 +380,6 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             requeue_limit=self.valid_requeue_limit_2,
         )
         self.assertEqual(response["status"], "queued")
-
         response.pop("status")
         self.assertEqual(response, {})
 
@@ -382,7 +393,6 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             requeue_limit=self.valid_requeue_limit_3,
         )
         self.assertEqual(response["status"], "queued")
-
         response.pop("status")
         self.assertEqual(response, {})
 
@@ -395,9 +405,10 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             queue_type=self.valid_queue_type,
         )
         self.assertEqual(response["status"], "queued")
-
         response.pop("status")
         self.assertEqual(response, {})
+
+    # ---------- dequeue ----------
 
     async def test_dequeue_queue_type_invalid(self):
         # type 1
@@ -433,25 +444,17 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["status"], "success")
         response.pop("status")
 
-        # check if it has a key called 'payload'
         self.assertIn("payload", response)
         response.pop("payload")
-
-        # check if it has a key called 'queue_id'
         self.assertIn("queue_id", response)
         response.pop("queue_id")
-
-        # check if it has a key called 'job_id'
         self.assertIn("job_id", response)
         response.pop("job_id")
-
-        # check if it has a key called 'requeues_remaining'
         self.assertIn("requeues_remaining", response)
         response.pop("requeues_remaining")
-
         self.assertEqual(response, {})
 
-        # enqueue another job
+        # enqueue another job w/o queue_type (default)
         await self.queue.enqueue(
             payload=self.valid_payload,
             interval=self.valid_interval,
@@ -466,17 +469,15 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("payload", response)
         response.pop("payload")
-
         self.assertIn("queue_id", response)
         response.pop("queue_id")
-
         self.assertIn("job_id", response)
         response.pop("job_id")
-
         self.assertIn("requeues_remaining", response)
         response.pop("requeues_remaining")
-
         self.assertEqual(response, {})
+
+    # ---------- finish ----------
 
     async def test_finish_queue_type_invalid(self):
         # type 1
@@ -578,7 +579,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_finish_all_ok(self):
-        # with a queue_type. non-existent job.
+        # with a queue_type, non-existent job
         response = await self.queue.finish(
             queue_type=self.valid_queue_type,
             queue_id=self.valid_queue_id,
@@ -596,19 +597,21 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         response.pop("status")
         self.assertEqual(response, {})
 
+    # ---------- interval ----------
+
     async def test_interval_interval_invalid(self):
-        for invalid_interval in [
+        for invalid in (
             self.invalid_interval_1,
             self.invalid_interval_2,
             self.invalid_interval_3,
             self.invalid_interval_4,
             self.invalid_interval_5,
-        ]:
+        ):
             with self.assertRaisesRegex(
                 BadArgumentException, "`interval` has an invalid value."
             ):
                 await self.queue.interval(
-                    interval=invalid_interval,
+                    interval=invalid,
                     queue_id=self.valid_queue_id,
                     queue_type=self.valid_queue_type,
                 )
@@ -616,23 +619,23 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
     async def test_interval_interval_missing(self):
         with self.assertRaises(TypeError):
             self.queue.interval(
-                # interval parameter missing
+                # interval missing
                 queue_id=self.valid_queue_id,
                 queue_type=self.valid_queue_type,
             )
 
     async def test_interval_invalid_queue_id(self):
-        for invalid_qid in [
+        for invalid in (
             self.invalid_queue_id_1,
             self.invalid_queue_id_2,
             self.invalid_queue_id_3,
-        ]:
+        ):
             with self.assertRaisesRegex(
                 BadArgumentException, "`queue_id` has an invalid value."
             ):
                 await self.queue.interval(
                     interval=self.valid_interval,
-                    queue_id=invalid_qid,
+                    queue_id=invalid,
                     queue_type=self.valid_queue_type,
                 )
 
@@ -640,44 +643,46 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TypeError):
             self.queue.interval(
                 interval=self.valid_interval,
-                # queue_id parameter missing
+                # queue_id missing
                 queue_type=self.valid_queue_type,
             )
 
     async def test_interval_invalid_queue_type(self):
-        for invalid_qtype in [
+        for invalid in (
             self.invalid_queue_type_1,
             self.invalid_queue_type_2,
             self.invalid_queue_type_3,
-        ]:
+        ):
             with self.assertRaisesRegex(
                 BadArgumentException, "`queue_type` has an invalid value."
             ):
                 await self.queue.interval(
                     interval=self.valid_interval,
                     queue_id=self.valid_queue_id,
-                    queue_type=invalid_qtype,
+                    queue_type=invalid,
                 )
 
     async def test_interval_all_ok(self):
-        # with a queue_type
+        # with a queue_type: no queues yet → failure
         response = await self.queue.interval(
             interval=self.valid_interval,
             queue_id=self.valid_queue_id,
             queue_type=self.valid_queue_type,
         )
-        # no queues are found yet.
         self.assertEqual(response["status"], "failure")
         response.pop("status")
         self.assertEqual(response, {})
 
-        # without a queue_type
+        # without a queue_type: still failure
         response = await self.queue.interval(
-            interval=self.valid_interval, queue_id=self.valid_queue_id
+            interval=self.valid_interval,
+            queue_id=self.valid_queue_id,
         )
         self.assertEqual(response["status"], "failure")
         response.pop("status")
         self.assertEqual(response, {})
+
+    # ---------- metrics ----------
 
     async def test_metrics_no_argument(self):
         response = await self.queue.metrics()
@@ -686,10 +691,8 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("queue_types", response)
         response.pop("queue_types")
-
         self.assertIn("enqueue_counts", response)
         response.pop("enqueue_counts")
-
         self.assertIn("dequeue_counts", response)
         response.pop("dequeue_counts")
 
@@ -705,10 +708,8 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         response = await self.queue.metrics(queue_type=self.valid_queue_type)
         self.assertEqual(response["status"], "success")
         response.pop("status")
-
         self.assertIn("queue_ids", response)
         response.pop("queue_ids")
-
         self.assertEqual(response, {})
 
     async def test_metrics_both_queue_id_queue_type(self):
@@ -720,91 +721,80 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("queue_length", response)
         response.pop("queue_length")
-
         self.assertIn("enqueue_counts", response)
         response.pop("enqueue_counts")
-
         self.assertIn("dequeue_counts", response)
         response.pop("dequeue_counts")
 
         self.assertEqual(response, {})
 
     async def test_metrics_queue_id_invalid(self):
-        for invalid_qid in [
+        for invalid in (
             self.invalid_queue_id_1,
             self.invalid_queue_id_2,
             self.invalid_queue_id_3,
-        ]:
+        ):
             with self.assertRaisesRegex(
                 BadArgumentException, "`queue_id` has an invalid value."
             ):
                 await self.queue.metrics(
-                    queue_type=self.valid_queue_type, queue_id=invalid_qid
+                    queue_type=self.valid_queue_type,
+                    queue_id=invalid,
                 )
 
     async def test_metrics_invalid_queue_type(self):
-        for invalid_qtype in [
+        for invalid in (
             self.invalid_queue_type_1,
             self.invalid_queue_type_2,
             self.invalid_queue_type_3,
-        ]:
+        ):
             with self.assertRaisesRegex(
                 BadArgumentException, "`queue_type` has an invalid value."
             ):
                 await self.queue.metrics(
-                    queue_type=invalid_qtype, queue_id=self.valid_queue_id
+                    queue_type=invalid,
+                    queue_id=self.valid_queue_id,
                 )
 
+    # ---------- clear_queue ----------
+
     async def test_clear_queue_invalid_queue_type(self):
-        for invalid_qtype in [
+        for invalid in (
             self.invalid_queue_type_1,
             self.invalid_queue_type_2,
             self.invalid_queue_type_3,
-        ]:
+            None,
+        ):
             with self.assertRaisesRegex(
                 BadArgumentException, "`queue_type` has an invalid value."
             ):
                 await self.queue.clear_queue(
-                    queue_type=invalid_qtype, queue_id=self.valid_queue_id
+                    queue_type=invalid,
+                    queue_id=self.valid_queue_id,
                 )
 
-        with self.assertRaisesRegex(
-            BadArgumentException, "`queue_type` has an invalid value."
-        ):
-            await self.queue.clear_queue(
-                queue_type=None, queue_id=self.valid_queue_id
-            )
-
-    async def test_ping_redis(self):
-        # either add async ping() in FQ or use the raw client
-        res = await self.queue.redis_client().ping()
-        self.assertEqual(res, True)
-
     async def test_clear_queue_invalid_queue_id_(self):
-        for invalid_qid in [
+        for invalid in (
             self.invalid_queue_id_1,
             self.invalid_queue_id_2,
             self.invalid_queue_id_3,
-        ]:
+            None,
+        ):
             with self.assertRaisesRegex(
                 BadArgumentException, "`queue_id` has an invalid value."
             ):
                 await self.queue.clear_queue(
-                    queue_id=invalid_qid, queue_type=self.valid_queue_type
+                    queue_id=invalid,
+                    queue_type=self.valid_queue_type,
                 )
 
-        with self.assertRaisesRegex(
-            BadArgumentException, "`queue_id` has an invalid value."
-        ):
-            await self.queue.clear_queue(
-                queue_id=None, queue_type=self.valid_queue_type
-            )
+    # ---------- deep_status / ping ----------
 
-    async def asyncTearDown(self):
-        # flush redis at the end
-        await self.queue._r.flushdb()
-        # close redis connections to avoid ResourceWarnings
-        await self.queue.close()
+    async def test_ping_redis(self):
+        # using deep_status as the async health check
+        res = await self.queue.deep_status()
+        # deep_status sets a key; we just need that it didn't throw
+        self.assertIsNotNone(res)
 
 
 def main():

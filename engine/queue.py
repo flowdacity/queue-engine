@@ -168,7 +168,7 @@ class FQ(object):
         try:
             serialized_payload = serialize_payload(payload)
         except TypeError as e:
-            raise BadArgumentException(e.message)
+            raise BadArgumentException("can not serialize.")
 
         timestamp = str(generate_epoch())
         keys = [self._key_prefix, queue_type]

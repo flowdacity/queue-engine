@@ -9,3 +9,8 @@ dependencies = [
     "msgpack>=1.1.2",
     "redis[hiredis]>=7.1.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+]

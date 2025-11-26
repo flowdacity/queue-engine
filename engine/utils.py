@@ -32,13 +32,7 @@ def is_valid_interval(interval):
     """Checks if the given interval is valid. A valid interval
     is always a positive, non-zero integer value.
     """
-    if not isinstance(interval, int):
-        return False
-
-    if interval < 0:
-        return False
-
-    return True
+    return isinstance(interval, int) and interval > 0
 
 
 def is_valid_requeue_limit(requeue_limit):
