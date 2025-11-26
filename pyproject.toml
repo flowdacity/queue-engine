@@ -18,5 +18,16 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "build>=1.3.0",
     "pytest>=9.0.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fd"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/fd",
+  "README.md",
+  "LICENSE.txt",
 ]

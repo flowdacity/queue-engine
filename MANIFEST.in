@@ -1,1 +1,1 @@
-include LICENSE.txt README.md engine/scripts/lua/*.lua
+include LICENSE.txt README.md src/fd/scripts/lua/*.lua
