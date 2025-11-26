@@ -7,8 +7,8 @@ import math
 import asyncio
 import unittest
 import msgpack
-from fd import FQ
-from fd.utils import generate_epoch, deserialize_payload
+from fq import FQ
+from fq.utils import generate_epoch, deserialize_payload
 
 
 

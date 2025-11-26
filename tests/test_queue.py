@@ -4,8 +4,8 @@ import os
 import unittest
 from datetime import date
 
-from fd import FQ
-from fd.exceptions import BadArgumentException
+from fq import FQ
+from fq.exceptions import BadArgumentException
 
 
 class FQTest(unittest.IsolatedAsyncioTestCase):

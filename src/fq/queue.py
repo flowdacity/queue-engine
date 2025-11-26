@@ -9,7 +9,7 @@ import configparser
 from redis.asyncio import Redis
 from redis.asyncio.cluster import RedisCluster
 
-from fd.utils import (
+from fq.utils import (
     is_valid_identifier,
     is_valid_interval,
     is_valid_requeue_limit,
@@ -18,7 +18,7 @@ from fd.utils import (
     deserialize_payload,
     convert_to_str,
 )
-from fd.exceptions import FQException, BadArgumentException
+from fq.exceptions import FQException, BadArgumentException
 
 
 class FQ(object):
