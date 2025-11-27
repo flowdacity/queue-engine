@@ -39,6 +39,10 @@ class FQ(object):
         self._load_config()
         self._r = None  # redis client placeholder
 
+    async def initialize(self):
+        """Async initializer to set up redis and lua scripts."""
+        await self._initialize()
+
     async def _initialize(self):
         """Read the FQ configuration and set up redis + Lua scripts."""
 
