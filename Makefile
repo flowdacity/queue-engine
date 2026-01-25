@@ -1,4 +1,4 @@
-.PHONY: all clean build install uninstall test publish redis redis-down
+.PHONY: all clean build install uninstall test publish redis-up redis-down
 
 # Default target
 all: clean build
@@ -23,14 +23,11 @@ uninstall:
 	pip uninstall -y flowdacity-queue
 
 # Run tests — prefers pytest, falls back to python modules
-test:
-	@if python -c "import pytest" 2>/dev/null; then \
-		python -m pytest -q; \
-	else \
-		echo 'pytest not installed — running direct test modules'; \
-		python -m tests.test_queue; \
-		python -m tests.test_func; \
-	fi
+test: redis-up
+	@status=0; \
+	uv run pytest tests || uv run python -m unittest discover -s tests || status=$$?; \
+	$(MAKE) redis-down; \
+	exit $$status
 
 publish: clean
 	uv sync --group dev
@@ -40,7 +37,7 @@ publish: clean
 	uv run python -m twine upload dist/*
 
 # Start Redis container
-redis:
+redis-up:
 	docker compose up -d redis
 
 # Stop Redis container
