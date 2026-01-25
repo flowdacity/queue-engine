@@ -1,6 +1,6 @@
 [project]
 name = "flowdacity-queue"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A simple Redis-based job queue system."
 readme = "README.md"
 license = {text = "MIT"}
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
@@ -32,3 +32,6 @@ include = [
   "README.md",
   "LICENSE.txt",
 ]
+
+[tool.hatch.version]
+source = "vcs"
