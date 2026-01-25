@@ -1,6 +1,8 @@
+[![Run tests and upload coverage](https://github.com/flowdacity/flowdacity-queue/actions/workflows/tests.yml/badge.svg)](https://github.com/flowdacity/flowdacity-queue/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/github/flowdacity/flowdacity-queue/graph/badge.svg?token=70BDRZY956)](https://codecov.io/github/flowdacity/flowdacity-queue)
+
 Flowdacity Queue
 ================
-[![codecov](https://codecov.io/github/flowdacity/flowdacity-queue/graph/badge.svg?token=70BDRZY956)](https://codecov.io/github/flowdacity/flowdacity-queue)
 
 Flowdacity Queue (FQ) is an asyncio-friendly, rate-limited job queue built on Redis. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
 
