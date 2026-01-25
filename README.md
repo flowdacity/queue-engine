@@ -59,12 +59,12 @@ unix_socket_path : /tmp/redis.sock
 ```python
 import asyncio
 import uuid
-from fd import FQ
+from fq import FQ
 
 
 async def main():
     fq = FQ("config.conf")
-    await fq._initialize()  # load config, connect to Redis, register Lua scripts
+    await fq.initialize()  # load config, connect to Redis, register Lua scripts
 
     job_id = str(uuid.uuid4())
     await fq.enqueue(
@@ -99,8 +99,8 @@ Common operations:
 
 ## Development
 
-- Start Redis for local development: `make redis` (binds to `localhost:6380`; matches `tests/test.conf`).
-- Run the suite: `make test` (requires the Redis instance above or another matching your config).
+- Start Redis for local development: `make redis-up` (binds to `localhost:6379`; matches `tests/test.conf`).
+- Run the suite: `make test` (automatically starts and tears down Redis).
 - Build a wheel: `make build`
 - Install/uninstall from the build: `make install` / `make uninstall`
 - Stop the dev Redis container: `make redis-down`
