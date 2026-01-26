@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+#  Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
+
+
 import os
 import tempfile
 import unittest
@@ -6,7 +9,7 @@ from unittest.mock import patch
 
 from fq import FQ
 from fq.utils import is_valid_identifier
-from fq.exceptions import BadArgumentException
+from fq.exceptions import BadArgumentException, FQException
 
 
 class FakeCluster:
@@ -20,6 +23,9 @@ class FakeCluster:
             return []
 
         return _runner
+
+    async def ping(self):
+        return True
 
 
 class FakeRedisForClose:
@@ -46,6 +52,20 @@ class FakeRedisForDeepStatus:
     async def set(self, key, value):
         self.key_set = (key, value)
         return True
+
+
+class FakeRedisConnectionFailure:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def ping(self):
+        raise ConnectionError("boom")
+
+    def register_script(self, _):
+        async def _runner(*args, **kwargs):
+            return []
+
+        return _runner
 
 
 class FakeLuaDequeue:
@@ -95,6 +115,16 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         cwd = os.path.dirname(os.path.realpath(__file__))
         self.config_path = os.path.join(cwd, "test.conf")
+
+    def test_missing_config_file_raises(self):
+        with self.assertRaisesRegex(FQException, "Config file not found"):
+            FQ("/tmp/does-not-exist.conf")
+
+    async def test_initialize_fails_fast_on_bad_redis(self):
+        with patch("fq.queue.Redis", FakeRedisConnectionFailure):
+            fq = FQ(self.config_path)
+            with self.assertRaisesRegex(FQException, "Failed to connect to Redis"):
+                await fq.initialize()
 
     async def test_cluster_initialization(self):
         """Covers clustered Redis path (queue.py lines 69-75, 104-106)."""

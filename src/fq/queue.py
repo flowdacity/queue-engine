@@ -87,12 +87,44 @@ class FQ(object):
         else:
             raise FQException("Unknown redis conn_type: %s" % redis_connection_type)
 
+        await self._validate_redis_connection()
         self._load_lua_scripts()
+
+    async def _validate_redis_connection(self):
+        """Ping redis once to surface bad connection details early."""
+        if self._r is None:
+            raise FQException("Redis client is not initialized")
+
+        ping = getattr(self._r, "ping", None)
+        if not callable(ping):
+            return
+
+        try:
+            result = await ping()
+        except Exception as exc:
+            raise FQException("Failed to connect to Redis: %s" % exc) from exc
+
+        if result is False:
+            raise FQException("Failed to connect to Redis: ping returned False")
 
     def _load_config(self):
         """Read the configuration file and load it into memory."""
+        if not os.path.isfile(self.config_path):
+            raise FQException("Config file not found: %s" % self.config_path)
+
         self._config = configparser.ConfigParser()
-        self._config.read(self.config_path)
+        read_files = self._config.read(self.config_path)
+
+        if not read_files:
+            raise FQException("Unable to read config file: %s" % self.config_path)
+
+        if not self._config.has_section("redis") or not self._config.has_section(
+            "fq"
+        ):
+            raise FQException(
+                "Config file missing required sections: redis, fq (path: %s)"
+                % self.config_path
+            )
 
     def redis_client(self):
         return self._r
