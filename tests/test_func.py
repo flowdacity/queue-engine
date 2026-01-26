@@ -1853,7 +1853,7 @@ unix_socket_path          : /tmp/redis_nonexistent.sock
                 # Verify that Redis was initialized with unix_socket_path
                 self.assertIn('unix_socket_path', redis_init_kwargs)
                 self.assertEqual(redis_init_kwargs['unix_socket_path'], '/tmp/redis_nonexistent.sock')
-                self.assertEqual(redis_init_kwargs['db'], '0')
+                self.assertEqual(int(redis_init_kwargs['db']), 0)
                 
                 await fq.close()
         finally:

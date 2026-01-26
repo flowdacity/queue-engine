@@ -181,8 +181,6 @@ password                  :
         result = await fq.dequeue()
         self.assertEqual(result["status"], "failure")
         self.assertTrue(fake_dequeue.called)
-        await fq.close()
-        self.fq_instance = None
 
     async def test_clear_queue_delete_only(self):
         """Covers clear_queue else branch (queue.py lines 499, 502)."""
@@ -192,8 +190,6 @@ password                  :
         await fq._r.flushdb()
         response = await fq.clear_queue(queue_type="noqueue", queue_id="missing")
         self.assertEqual(response["status"], "Failure")
-        await fq.close()
-        self.fq_instance = None
 
     async def test_close_fallback_paths(self):
         """Covers close() fallback paths (queue.py lines 528-549)."""
@@ -272,8 +268,6 @@ password                  :
         await fq._initialize()
         result = await fq.deep_status()
         self.assertTrue(result)
-        await fq.close()
-        self.fq_instance = None
 
 
 if __name__ == "__main__":
