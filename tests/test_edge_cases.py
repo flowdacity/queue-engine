@@ -152,7 +152,6 @@ password                  :
         fq._r = FakeRedisForClose()
         await fq.close()
         self.assertIsNone(fq._r)
-        self.assertTrue(fq._r is None)
 
     async def test_deep_status_calls_set(self):
         """Covers deep_status (queue.py line 420)."""
