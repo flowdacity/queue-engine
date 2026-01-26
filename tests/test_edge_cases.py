@@ -126,7 +126,8 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
                     await self.fq_instance._r.flushdb()
                 await self.fq_instance.close()
             except Exception:
-                # Ignore errors during cleanup
+                # Ignore errors during cleanup - tests may have mocked or closed connections
+                # This prevents tearDown failures from masking test failures
                 pass
             self.fq_instance = None
 

@@ -1841,12 +1841,12 @@ unix_socket_path          : /tmp/redis_nonexistent.sock
             
             redis_init_kwargs = {}
             
-            def capture_redis_init(**kwargs):
+            def mock_redis_constructor(**kwargs):
                 redis_init_kwargs.update(kwargs)
                 return mock_redis_instance
             
             # Patch Redis to intercept the initialization
-            with unittest.mock.patch('fq.queue.Redis', side_effect=capture_redis_init):
+            with unittest.mock.patch('fq.queue.Redis', side_effect=mock_redis_constructor):
                 fq = FQ(config_path)
                 await fq._initialize()
                 
