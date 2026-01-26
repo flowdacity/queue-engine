@@ -8,7 +8,7 @@ import asyncio
 import unittest
 import msgpack
 import tempfile
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from fq import FQ
 from fq.exceptions import FQException
 from fq.utils import generate_epoch, deserialize_payload
@@ -1816,7 +1816,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(fq._r)
 
     async def test_initialize_unix_socket_connection(self):
-        """Test initialization with unix socket connection - tests line 59."""
+        """Test initialization with Unix socket connection - tests line 59."""
         # Create a temporary config with unix_sock
         with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
             f.write("""[fq]
@@ -1833,14 +1833,29 @@ unix_socket_path          : /tmp/redis_nonexistent.sock
             config_path = f.name
         
         try:
-            fq = FQ(config_path)
-            # Mock the Redis ping to avoid actual connection attempt
-            mock_redis = AsyncMock()
-            mock_redis.ping = AsyncMock(return_value=True)
-            fq._r = mock_redis
-            # This tests the unix_sock path was configured (line 59)
-            self.assertIsNotNone(fq._r)
-            await fq.close()
+            # Create a mock Redis class to capture initialization parameters
+            mock_redis_instance = MagicMock()
+            mock_redis_instance.ping = AsyncMock(return_value=True)
+            mock_redis_instance.register_script = MagicMock(return_value=MagicMock())
+            mock_redis_instance.aclose = AsyncMock()
+            
+            redis_init_kwargs = {}
+            
+            def mock_redis_constructor(**kwargs):
+                redis_init_kwargs.update(kwargs)
+                return mock_redis_instance
+            
+            # Patch Redis to intercept the initialization
+            with unittest.mock.patch('fq.queue.Redis', side_effect=mock_redis_constructor):
+                fq = FQ(config_path)
+                await fq._initialize()
+                
+                # Verify that Redis was initialized with unix_socket_path
+                self.assertIn('unix_socket_path', redis_init_kwargs)
+                self.assertEqual(redis_init_kwargs['unix_socket_path'], '/tmp/redis_nonexistent.sock')
+                self.assertEqual(int(redis_init_kwargs['db']), 0)
+                
+                await fq.close()
         finally:
             os.unlink(config_path)
 

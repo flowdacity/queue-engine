@@ -115,6 +115,21 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         cwd = os.path.dirname(os.path.realpath(__file__))
         self.config_path = os.path.join(cwd, "test.conf")
+        self.fq_instance = None
+
+    async def asyncTearDown(self):
+        """Clean up Redis state and close connections after each test."""
+        # If a test initialized FQ with real Redis, clean up
+        if self.fq_instance is not None:
+            try:
+                if self.fq_instance._r is not None:
+                    await self.fq_instance._r.flushdb()
+                await self.fq_instance.close()
+            except Exception:
+                # Ignore errors during cleanup - tests may have mocked or closed connections
+                # This prevents tearDown failures from masking test failures
+                pass
+            self.fq_instance = None
 
     def test_missing_config_file_raises(self):
         with self.assertRaisesRegex(FQException, "Config file not found"):
@@ -159,22 +174,22 @@ password                  :
     async def test_dequeue_payload_none(self):
         """Covers dequeue branch where payload is None (queue.py line 212)."""
         fq = FQ(self.config_path)
+        self.fq_instance = fq
         await fq._initialize()
         fake_dequeue = FakeLuaDequeue()
         fq._lua_dequeue = fake_dequeue
         result = await fq.dequeue()
         self.assertEqual(result["status"], "failure")
         self.assertTrue(fake_dequeue.called)
-        await fq.close()
 
     async def test_clear_queue_delete_only(self):
         """Covers clear_queue else branch (queue.py lines 499, 502)."""
         fq = FQ(self.config_path)
+        self.fq_instance = fq
         await fq._initialize()
         await fq._r.flushdb()
         response = await fq.clear_queue(queue_type="noqueue", queue_id="missing")
         self.assertEqual(response["status"], "Failure")
-        await fq.close()
 
     async def test_close_fallback_paths(self):
         """Covers close() fallback paths (queue.py lines 528-549)."""
@@ -249,10 +264,10 @@ password                  :
     async def test_deep_status_real_redis(self):
         """Covers deep_status with real redis (queue.py line 420)."""
         fq = FQ(self.config_path)
+        self.fq_instance = fq
         await fq._initialize()
         result = await fq.deep_status()
         self.assertTrue(result)
-        await fq.close()
 
 
 if __name__ == "__main__":
