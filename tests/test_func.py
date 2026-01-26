@@ -1928,7 +1928,7 @@ conn_type                 : invalid_type
         self.assertIn("key2", result)
         self.assertIn("key3", result)
 
-    async def test_asyncTearDown(self):
+    async def asyncTearDown(self):
         await self.queue._r.flushdb()
         await self.queue.close()
 
