@@ -7,7 +7,10 @@ import math
 import asyncio
 import unittest
 import msgpack
+import tempfile
+from unittest.mock import AsyncMock, MagicMock
 from fq import FQ
+from fq.exceptions import FQException
 from fq.utils import generate_epoch, deserialize_payload
 
 
@@ -1723,6 +1726,226 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(queue_clear_response["status"], "Failure")
         self.assertEqual(queue_clear_response["message"], "No queued calls found")
+
+    async def test_deep_status(self):
+        """Test deep_status method for Redis availability check."""
+        result = await self.queue.deep_status()
+        self.assertIsNotNone(result)
+
+    async def test_initialize_public_method(self):
+        """Test the public initialize() method."""
+        cwd = os.path.dirname(os.path.realpath(__file__))
+        config_path = os.path.join(cwd, "test.conf")
+        fq = FQ(config_path)
+        
+        # Public initialize() should work
+        await fq.initialize()
+        
+        # Verify initialization succeeded
+        self.assertIsNotNone(fq._r)
+        self.assertIsNotNone(fq._lua_enqueue)
+        
+        # Cleanup
+        await fq.close()
+
+    async def test_reload_lua_scripts(self):
+        """Test reload_lua_scripts method."""
+        # Just verify it doesn't crash and scripts work after reload
+        self.queue.reload_lua_scripts()
+        
+        # Verify scripts are still functional
+        job_id = self._get_job_id()
+        response = await self.queue.enqueue(
+            payload=self._test_payload_1,
+            interval=1000,
+            job_id=job_id,
+            queue_id=self._test_queue_id,
+            queue_type=self._test_queue_type,
+        )
+        self.assertEqual(response["status"], "queued")
+
+    async def test_get_queue_length(self):
+        """Test get_queue_length method."""
+        # Initially empty
+        length = await self.queue.get_queue_length(
+            self._test_queue_type, self._test_queue_id
+        )
+        self.assertEqual(length, 0)
+        
+        # Add a job
+        job_id = self._get_job_id()
+        await self.queue.enqueue(
+            payload=self._test_payload_1,
+            interval=1000,
+            job_id=job_id,
+            queue_id=self._test_queue_id,
+            queue_type=self._test_queue_type,
+        )
+        
+        # Check length
+        length = await self.queue.get_queue_length(
+            self._test_queue_type, self._test_queue_id
+        )
+        self.assertEqual(length, 1)
+
+    async def test_redis_client_getter(self):
+        """Test redis_client() method."""
+        client = self.queue.redis_client()
+        self.assertIsNotNone(client)
+        # Verify it's the same client
+        self.assertIs(client, self.queue._r)
+
+    async def test_close_properly_closes_connection(self):
+        """Test close() method properly closes Redis connection."""
+        cwd = os.path.dirname(os.path.realpath(__file__))
+        config_path = os.path.join(cwd, "test.conf")
+        fq = FQ(config_path)
+        await fq._initialize()
+        
+        self.assertIsNotNone(fq._r)
+        await fq.close()
+        self.assertIsNone(fq._r)
+
+    async def test_close_with_none_client(self):
+        """Test close() when redis client is None."""
+        cwd = os.path.dirname(os.path.realpath(__file__))
+        config_path = os.path.join(cwd, "test.conf")
+        fq = FQ(config_path)
+        # Don't initialize, so _r is None
+        await fq.close()  # Should not crash
+        self.assertIsNone(fq._r)
+
+    async def test_initialize_unix_socket_connection(self):
+        """Test initialization with Unix socket connection - tests line 59."""
+        # Create a temporary config with unix_sock
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+            f.write("""[fq]
+job_expire_interval       : 5000
+job_requeue_interval      : 5000
+default_job_requeue_limit : -1
+
+[redis]
+db                        : 0
+key_prefix                : test_fq_unix
+conn_type                 : unix_sock
+unix_socket_path          : /tmp/redis_nonexistent.sock
+""")
+            config_path = f.name
+        
+        try:
+            # Create a mock Redis class to capture initialization parameters
+            mock_redis_instance = MagicMock()
+            mock_redis_instance.ping = AsyncMock(return_value=True)
+            mock_redis_instance.register_script = MagicMock(return_value=MagicMock())
+            mock_redis_instance.aclose = AsyncMock()
+            
+            redis_init_kwargs = {}
+            
+            def mock_redis_constructor(**kwargs):
+                redis_init_kwargs.update(kwargs)
+                return mock_redis_instance
+            
+            # Patch Redis to intercept the initialization
+            with unittest.mock.patch('fq.queue.Redis', side_effect=mock_redis_constructor):
+                fq = FQ(config_path)
+                await fq._initialize()
+                
+                # Verify that Redis was initialized with unix_socket_path
+                self.assertIn('unix_socket_path', redis_init_kwargs)
+                self.assertEqual(redis_init_kwargs['unix_socket_path'], '/tmp/redis_nonexistent.sock')
+                self.assertEqual(int(redis_init_kwargs['db']), 0)
+                
+                await fq.close()
+        finally:
+            os.unlink(config_path)
+
+    async def test_initialize_unknown_connection_type(self):
+        """Test initialization with invalid connection type raises error - tests line 88."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+            f.write("""[fq]
+job_expire_interval       : 5000
+job_requeue_interval      : 5000
+default_job_requeue_limit : -1
+
+[redis]
+db                        : 0
+key_prefix                : test_fq
+conn_type                 : invalid_type
+""")
+            config_path = f.name
+        
+        try:
+            fq = FQ(config_path)
+            # This tests line 88 - unknown conn_type
+            with self.assertRaisesRegex(FQException, "Unknown redis conn_type"):
+                await fq._initialize()
+        finally:
+            os.unlink(config_path)
+
+    async def test_clear_queue_with_purge_all_and_string_job_uuid(self):
+        """Test clear_queue with purge_all=True handles string job UUIDs - tests lines 464, 468."""
+        job_id = self._get_job_id()
+        await self.queue.enqueue(
+            payload=self._test_payload_1,
+            interval=10000,
+            job_id=job_id,
+            queue_id=self._test_queue_id,
+            queue_type=self._test_queue_type,
+        )
+        
+        # Clear with purge_all
+        result = await self.queue.clear_queue(
+            queue_type=self._test_queue_type,
+            queue_id=self._test_queue_id,
+            purge_all=True
+        )
+        self.assertEqual(result["status"], "Success")
+        self.assertIn("purged", result["message"])
+
+    async def test_deserialize_payload_old_format(self):
+        """Test deserialize_payload with old quote-wrapped format - tests utils.py line 63."""
+        test_data = {"key": "value", "number": 42}
+        # Simulate old format: msgpack wrapped in quotes
+        packed = msgpack.packb(test_data, use_bin_type=True)
+        old_format_payload = b'"' + packed + b'"'
+        
+        result = deserialize_payload(old_format_payload)
+        self.assertEqual(result, test_data)
+
+    async def test_deserialize_payload_new_format(self):
+        """Test deserialize_payload handles new unwrapped format - tests utils.py line 63."""
+        test_data = {"key": "value", "nested": {"inner": "data"}}
+        packed = msgpack.packb(test_data, use_bin_type=True)
+        
+        result = deserialize_payload(packed)
+        self.assertEqual(result, test_data)
+
+    async def test_dequeue_empty_queue_returns_failure(self):
+        """Test dequeue on empty queue returns failure status - tests queue.py line 212."""
+        result = await self.queue.dequeue(queue_type="nonexistent_type")
+        self.assertEqual(result["status"], "failure")
+        # Verify no payload key in response
+        self.assertNotIn("payload", result)
+
+    async def test_deep_status_redis_availability(self):
+        """Test deep_status method checks Redis availability - tests queue.py line 420."""
+        result = await self.queue.deep_status()
+        # Should succeed with Redis running
+        self.assertIsNotNone(result)
+
+    async def test_convert_to_str_with_mixed_types(self):
+        """Test convert_to_str handles both bytes and strings."""
+        from fq.utils import convert_to_str
+        
+        # Mixed bytes and string set
+        mixed_set = {b"key1", "key2", b"key3"}
+        result = convert_to_str(mixed_set)
+        
+        # All should be strings
+        self.assertTrue(all(isinstance(x, str) for x in result))
+        self.assertIn("key1", result)
+        self.assertIn("key2", result)
+        self.assertIn("key3", result)
 
     async def asyncTearDown(self):
         await self.queue._r.flushdb()
