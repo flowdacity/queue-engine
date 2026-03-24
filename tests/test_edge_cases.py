@@ -146,21 +146,36 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         )
         with patch("fq.queue.RedisCluster", FakeCluster):
             fq = FQ(config)
-            await fq._initialize()
+            await fq.initialize()
             self.assertIsInstance(fq.redis_client(), FakeCluster)
             await fq.close()
 
-    async def test_clustered_config_must_be_boolean(self):
+    def test_clustered_config_must_be_boolean(self):
         config = build_test_config(redis={"clustered": "true"})
-        fq = FQ(config)
-        with self.assertRaisesRegex(FQException, "redis.clustered must be a boolean"):
-            await fq._initialize()
+        with self.assertRaisesRegex(
+            FQException, "Invalid config: redis.clustered must be a boolean"
+        ):
+            FQ(config)
+
+    def test_missing_required_config_key_raises_with_path(self):
+        config = build_test_config()
+        del config["redis"]["key_prefix"]
+        with self.assertRaisesRegex(FQException, "Missing config: redis.key_prefix"):
+            FQ(config)
+
+    def test_invalid_config_value_raises_with_path(self):
+        config = build_test_config(fq={"job_expire_interval": "5000"})
+        with self.assertRaisesRegex(
+            FQException,
+            "Invalid config: fq.job_expire_interval must be a positive integer",
+        ):
+            FQ(config)
 
     async def test_dequeue_payload_none(self):
         """Covers dequeue branch where payload is None (queue.py line 212)."""
         fq = FQ(self.config)
         self.fq_instance = fq
-        await fq._initialize()
+        await fq.initialize()
         fake_dequeue = FakeLuaDequeue()
         fq._lua_dequeue = fake_dequeue
         result = await fq.dequeue()
@@ -171,7 +186,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         """Covers clear_queue else branch (queue.py lines 499, 502)."""
         fq = FQ(self.config)
         self.fq_instance = fq
-        await fq._initialize()
+        await fq.initialize()
         await fq._r.flushdb()
         response = await fq.clear_queue(queue_type="noqueue", queue_id="missing")
         self.assertEqual(response["status"], "Failure")
@@ -221,7 +236,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         """Covers deep_status with real redis (queue.py line 420)."""
         fq = FQ(self.config)
         self.fq_instance = fq
-        await fq._initialize()
+        await fq.initialize()
         result = await fq.deep_status()
         self.assertTrue(result)
 

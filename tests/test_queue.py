@@ -13,7 +13,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         self.queue = FQ(build_test_config())
-        await self.queue._initialize()
+        await self.queue.initialize()
 
         self.valid_queue_type = "5m5_qu-eue"
         self.invalid_queue_type_1 = "s!ms_queue"

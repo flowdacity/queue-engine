@@ -53,14 +53,91 @@ class FQ(object):
         if "redis" not in normalized or "fq" not in normalized:
             raise FQException("Config missing required sections: redis, fq")
 
+        redis_config = normalized["redis"]
+        fq_config = normalized["fq"]
+
+        if "key_prefix" not in redis_config:
+            raise FQException("Missing config: redis.key_prefix")
+        if not isinstance(redis_config["key_prefix"], str) or not redis_config[
+            "key_prefix"
+        ]:
+            raise FQException(
+                "Invalid config: redis.key_prefix must be a non-empty string"
+            )
+
+        if "conn_type" not in redis_config:
+            raise FQException("Missing config: redis.conn_type")
+        if redis_config["conn_type"] not in {"tcp_sock", "unix_sock"}:
+            raise FQException(
+                "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'"
+            )
+
+        if "db" not in redis_config:
+            raise FQException("Missing config: redis.db")
+        if isinstance(redis_config["db"], bool) or not isinstance(
+            redis_config["db"], int
+        ):
+            raise FQException("Invalid config: redis.db must be an integer")
+
+        if "job_expire_interval" not in fq_config:
+            raise FQException("Missing config: fq.job_expire_interval")
+        if not is_valid_interval(fq_config["job_expire_interval"]):
+            raise FQException(
+                "Invalid config: fq.job_expire_interval must be a positive integer"
+            )
+
+        if "job_requeue_interval" not in fq_config:
+            raise FQException("Missing config: fq.job_requeue_interval")
+        if not is_valid_interval(fq_config["job_requeue_interval"]):
+            raise FQException(
+                "Invalid config: fq.job_requeue_interval must be a positive integer"
+            )
+
+        if "default_job_requeue_limit" not in fq_config:
+            raise FQException("Missing config: fq.default_job_requeue_limit")
+        if not is_valid_requeue_limit(fq_config["default_job_requeue_limit"]):
+            raise FQException(
+                "Invalid config: fq.default_job_requeue_limit must be an integer >= -1"
+            )
+
+        if redis_config["conn_type"] == "unix_sock":
+            if "unix_socket_path" not in redis_config:
+                raise FQException("Missing config: redis.unix_socket_path")
+            if not isinstance(redis_config["unix_socket_path"], str) or not redis_config[
+                "unix_socket_path"
+            ]:
+                raise FQException(
+                    "Invalid config: redis.unix_socket_path must be a non-empty string"
+                )
+
+        if redis_config["conn_type"] == "tcp_sock":
+            if "host" not in redis_config:
+                raise FQException("Missing config: redis.host")
+            if not isinstance(redis_config["host"], str) or not redis_config["host"]:
+                raise FQException(
+                    "Invalid config: redis.host must be a non-empty string"
+                )
+
+            if "port" not in redis_config:
+                raise FQException("Missing config: redis.port")
+            if isinstance(redis_config["port"], bool) or not isinstance(
+                redis_config["port"], int
+            ):
+                raise FQException("Invalid config: redis.port must be an integer")
+
+            if "clustered" in redis_config and not isinstance(
+                redis_config["clustered"], bool
+            ):
+                raise FQException("Invalid config: redis.clustered must be a boolean")
+
+        if "password" in redis_config and redis_config["password"] is not None:
+            if not isinstance(redis_config["password"], str):
+                raise FQException("Invalid config: redis.password must be a string")
+
         self.config = normalized
 
     async def initialize(self):
         """Async initializer to set up redis and lua scripts."""
-        await self._initialize()
-
-    async def _initialize(self):
-        """Read the FQ configuration and set up redis + Lua scripts."""
         fq_config = self.config["fq"]
         redis_config = self.config["redis"]
 
@@ -79,8 +156,6 @@ class FQ(object):
         elif redis_connection_type == "tcp_sock":
             isclustered = False
             if "clustered" in redis_config:
-                if not isinstance(redis_config["clustered"], bool):
-                    raise FQException("redis.clustered must be a boolean")
                 isclustered = redis_config["clustered"]
 
             if isclustered:

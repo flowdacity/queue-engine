@@ -24,7 +24,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.queue = FQ(build_test_config())
         # flush all the keys in the test db before starting test
-        await self.queue._initialize()
+        await self.queue.initialize()
         await self.queue._r.flushdb()
         # test specific values
         self._test_queue_id = "johndoe"
@@ -1793,7 +1793,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_close_properly_closes_connection(self):
         """Test close() method properly closes Redis connection."""
         fq = FQ(build_test_config())
-        await fq._initialize()
+        await fq.initialize()
         
         self.assertIsNotNone(fq._r)
         await fq.close()
@@ -1831,7 +1831,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         # Patch Redis to intercept the initialization
         with unittest.mock.patch("fq.queue.Redis", side_effect=mock_redis_constructor):
             fq = FQ(config)
-            await fq._initialize()
+            await fq.initialize()
 
             # Verify that Redis was initialized with unix_socket_path
             self.assertIn("unix_socket_path", redis_init_kwargs)
@@ -1843,12 +1843,13 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             await fq.close()
 
     async def test_initialize_unknown_connection_type(self):
-        """Test initialization with invalid connection type raises error - tests line 88."""
+        """Test constructor validation with invalid connection type."""
         config = build_test_config(redis={"conn_type": "invalid_type"})
-        fq = FQ(config)
-        # This tests line 88 - unknown conn_type
-        with self.assertRaisesRegex(FQException, "Unknown redis conn_type"):
-            await fq._initialize()
+        with self.assertRaisesRegex(
+            FQException,
+            "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'",
+        ):
+            FQ(config)
 
     async def test_clear_queue_with_purge_all_and_string_job_uuid(self):
         """Test clear_queue with purge_all=True handles string job UUIDs - tests lines 464, 468."""
