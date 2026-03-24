@@ -1,5 +1,5 @@
-[![Run tests and upload coverage](https://github.com/flowdacity/flowdacity-queue/actions/workflows/tests.yml/badge.svg)](https://github.com/flowdacity/flowdacity-queue/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/github/flowdacity/flowdacity-queue/graph/badge.svg?token=70BDRZY956)](https://codecov.io/github/flowdacity/flowdacity-queue)
+[![Run tests and upload coverage](https://github.com/flowdacity/queue-engine/actions/workflows/tests.yml/badge.svg)](https://github.com/flowdacity/queue-engine/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/github/flowdacity/queue-engine/graph/badge.svg?token=70BDRZY956)](https://codecov.io/github/flowdacity/queue-engine)
 
 Flowdacity Queue
 ================

@@ -48,4 +48,4 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: flowdacity/flowdacity-queue
+          slug: flowdacity/queue-engine
