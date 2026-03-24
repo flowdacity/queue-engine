@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "A simple Redis-based job queue system."
 readme = "README.md"
 license = {text = "MIT"}
-authors = [{name = "Ochui Princewill", email = "ochui@flowdacity.com"}]
+authors = [{name = "Flowdacity Development Team", email = "admin@flowdacity.com"}]
 requires-python = ">=3.12"
 dependencies = [
     "msgpack>=1.1.2",
