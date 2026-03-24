@@ -2,14 +2,13 @@
 #  Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
 
 
-import os
-import tempfile
 import unittest
 from unittest.mock import patch
 
 from fq import FQ
 from fq.utils import is_valid_identifier
 from fq.exceptions import BadArgumentException, FQException
+from tests.config import build_test_config
 
 
 class FakeCluster:
@@ -113,8 +112,7 @@ class FakeRedisForClear:
 
 class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        self.config_path = os.path.join(cwd, "test.conf")
+        self.config = build_test_config()
         self.fq_instance = None
 
     async def asyncTearDown(self):
@@ -131,49 +129,36 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
                 pass
             self.fq_instance = None
 
-    def test_missing_config_file_raises(self):
-        with self.assertRaisesRegex(FQException, "Config file not found"):
+    def test_invalid_config_type_raises(self):
+        with self.assertRaisesRegex(FQException, "Config must be a mapping"):
             FQ("/tmp/does-not-exist.conf")
 
     async def test_initialize_fails_fast_on_bad_redis(self):
         with patch("fq.queue.Redis", FakeRedisConnectionFailure):
-            fq = FQ(self.config_path)
+            fq = FQ(self.config)
             with self.assertRaisesRegex(FQException, "Failed to connect to Redis"):
                 await fq.initialize()
 
     async def test_cluster_initialization(self):
         """Covers clustered Redis path (queue.py lines 69-75, 104-106)."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
-            f.write(
-                """[fq]
-job_expire_interval       : 5000
-job_requeue_interval      : 5000
-default_job_requeue_limit : -1
+        config = build_test_config(
+            redis={"key_prefix": "test_fq_cluster", "clustered": True}
+        )
+        with patch("fq.queue.RedisCluster", FakeCluster):
+            fq = FQ(config)
+            await fq._initialize()
+            self.assertIsInstance(fq.redis_client(), FakeCluster)
+            await fq.close()
 
-[redis]
-db                        : 0
-key_prefix                : test_fq_cluster
-conn_type                 : tcp_sock
-host                      : 127.0.0.1
-port                      : 6379
-clustered                 : true
-password                  :
-"""
-            )
-            config_path = f.name
-
-        try:
-            with patch("fq.queue.RedisCluster", FakeCluster):
-                fq = FQ(config_path)
-                await fq._initialize()
-                self.assertIsInstance(fq.redis_client(), FakeCluster)
-                await fq.close()
-        finally:
-            os.unlink(config_path)
+    async def test_clustered_config_must_be_boolean(self):
+        config = build_test_config(redis={"clustered": "true"})
+        fq = FQ(config)
+        with self.assertRaisesRegex(FQException, "redis.clustered must be a boolean"):
+            await fq._initialize()
 
     async def test_dequeue_payload_none(self):
         """Covers dequeue branch where payload is None (queue.py line 212)."""
-        fq = FQ(self.config_path)
+        fq = FQ(self.config)
         self.fq_instance = fq
         await fq._initialize()
         fake_dequeue = FakeLuaDequeue()
@@ -184,7 +169,7 @@ password                  :
 
     async def test_clear_queue_delete_only(self):
         """Covers clear_queue else branch (queue.py lines 499, 502)."""
-        fq = FQ(self.config_path)
+        fq = FQ(self.config)
         self.fq_instance = fq
         await fq._initialize()
         await fq._r.flushdb()
@@ -193,15 +178,15 @@ password                  :
 
     async def test_close_fallback_paths(self):
         """Covers close() fallback paths (queue.py lines 528-549)."""
-        fq = FQ(self.config_path)
+        fq = FQ(self.config)
         fq._r = FakeRedisForClose()
         await fq.close()
         self.assertIsNone(fq._r)
 
     async def test_deep_status_calls_set(self):
         """Covers deep_status (queue.py line 420)."""
-        fq = FQ(self.config_path)
-        fq._key_prefix = fq._config.get("redis", "key_prefix")
+        fq = FQ(self.config)
+        fq._key_prefix = fq.config["redis"]["key_prefix"]
         fq._r = FakeRedisForDeepStatus()
         await fq.deep_status()
         self.assertEqual(
@@ -215,39 +200,10 @@ password                  :
         self.assertFalse(is_valid_identifier(None))
         self.assertFalse(is_valid_identifier(["a"]))
 
-    async def test_reload_config_with_new_path(self):
-        """Covers reload_config branch (queue.py lines 104-106)."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
-            f.write(
-                """[fq]
-job_expire_interval       : 5000
-job_requeue_interval      : 5000
-default_job_requeue_limit : -1
-
-[redis]
-db                        : 0
-key_prefix                : new_prefix
-conn_type                 : tcp_sock
-port                      : 6379
-host                      : 127.0.0.1
-clustered                 : false
-password                  :
-"""
-            )
-            new_config = f.name
-
-        try:
-            fq = FQ(self.config_path)
-            fq.reload_config(new_config)
-            self.assertEqual(fq.config_path, new_config)
-            self.assertEqual(fq._config.get("redis", "key_prefix"), "new_prefix")
-        finally:
-            os.unlink(new_config)
-
     async def test_clear_queue_purge_all_with_mixed_job_ids(self):
         """Covers purge_all loop branches (queue.py lines 463-468, 474-479)."""
-        fq = FQ(self.config_path)
-        fq._key_prefix = fq._config.get("redis", "key_prefix")
+        fq = FQ(self.config)
+        fq._key_prefix = fq.config["redis"]["key_prefix"]
         fq._r = FakeRedisForClear()
         response = await fq.clear_queue("qt", "qid", purge_all=True)
         self.assertEqual(response["status"], "Success")
@@ -255,7 +211,7 @@ password                  :
 
     async def test_get_queue_length_invalid_params(self):
         """Covers validation branches (queue.py lines 499, 502)."""
-        fq = FQ(self.config_path)
+        fq = FQ(self.config)
         with self.assertRaises(BadArgumentException):
             await fq.get_queue_length("bad type", "qid")
         with self.assertRaises(BadArgumentException):
@@ -263,7 +219,7 @@ password                  :
 
     async def test_deep_status_real_redis(self):
         """Covers deep_status with real redis (queue.py line 420)."""
-        fq = FQ(self.config_path)
+        fq = FQ(self.config)
         self.fq_instance = fq
         await fq._initialize()
         result = await fq.deep_status()

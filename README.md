@@ -33,22 +33,25 @@ pip install -e .
 
 ## Configuration
 
-FQ reads a simple INI config file. Intervals are in milliseconds.
-```
-[fq]
-job_expire_interval       : 5000
-job_requeue_interval      : 5000
-default_job_requeue_limit : -1  ; -1 retries forever, 0 means no retries
-
-[redis]
-db               : 0
-key_prefix       : queue_server
-conn_type        : tcp_sock      ; or unix_sock
-host             : 127.0.0.1
-port             : 6379
-password         :
-clustered        : false
-unix_socket_path : /tmp/redis.sock
+FQ accepts a simple config mapping. Intervals are in milliseconds.
+```python
+config = {
+    "fq": {
+        "job_expire_interval": 5000,
+        "job_requeue_interval": 5000,
+        "default_job_requeue_limit": -1,  # -1 retries forever, 0 means no retries
+    },
+    "redis": {
+        "db": 0,
+        "key_prefix": "queue_server",
+        "conn_type": "tcp_sock",  # or "unix_sock"
+        "host": "127.0.0.1",
+        "port": 6379,
+        "password": "",
+        "clustered": False,
+        "unix_socket_path": "/tmp/redis.sock",
+    },
+}
 ```
 
 > If you connect via Unix sockets, uncomment the `unixsocket` lines in your `redis.conf`:
@@ -66,8 +69,26 @@ from fq import FQ
 
 
 async def main():
-    fq = FQ("config.conf")
-    await fq.initialize()  # load config, connect to Redis, register Lua scripts
+    config = {
+        "fq": {
+            "job_expire_interval": 5000,
+            "job_requeue_interval": 5000,
+            "default_job_requeue_limit": -1,
+        },
+        "redis": {
+            "db": 0,
+            "key_prefix": "queue_server",
+            "conn_type": "tcp_sock",
+            "host": "127.0.0.1",
+            "port": 6379,
+            "password": "",
+            "clustered": False,
+            "unix_socket_path": "/tmp/redis.sock",
+        },
+    }
+
+    fq = FQ(config)
+    await fq.initialize()  # connect to Redis and register Lua scripts
 
     job_id = str(uuid.uuid4())
     await fq.enqueue(
@@ -102,7 +123,7 @@ Common operations:
 
 ## Development
 
-- Start Redis for local development: `make redis-up` (binds to `localhost:6379`; matches `tests/test.conf`).
+- Start Redis for local development: `make redis-up` (binds to `localhost:6379`).
 - Run the suite: `make test` (automatically starts and tears down Redis).
 - Build a wheel: `make build`
 - Install/uninstall from the build: `make install` / `make uninstall`

@@ -1,20 +1,18 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
-import os
 import unittest
 from datetime import date
 
 from fq import FQ
 from fq.exceptions import BadArgumentException
+from tests.config import build_test_config
 
 
 class FQTest(unittest.IsolatedAsyncioTestCase):
     """The FQTest contains test cases which validate the FQ interface."""
 
     async def asyncSetUp(self):
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(cwd, "test.conf")  # test config
-        self.queue = FQ(config_path)
+        self.queue = FQ(build_test_config())
         await self.queue._initialize()
 
         self.valid_queue_type = "5m5_qu-eue"
@@ -63,7 +61,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         # flush redis at the end and close connection
         await self.queue._r.flushdb()
-        await self.queue._r.aclose()
+        await self.queue.close()
 
     # ---------- enqueue ----------
 
