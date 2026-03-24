@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
-import os
 import uuid
 import time
 import math
 import asyncio
 import unittest
 import msgpack
-import tempfile
 from unittest.mock import AsyncMock, MagicMock
 from fq import FQ
 from fq.exceptions import FQException
 from fq.utils import generate_epoch, deserialize_payload
+from tests.config import build_test_config
 
 
 
@@ -23,11 +22,9 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
     """
 
     async def asyncSetUp(self):
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(cwd, "test.conf")  # test config
-        self.queue = FQ(config_path)
+        self.queue = FQ(build_test_config())
         # flush all the keys in the test db before starting test
-        await self.queue._initialize()
+        await self.queue.initialize()
         await self.queue._r.flushdb()
         # test specific values
         self._test_queue_id = "johndoe"
@@ -1734,9 +1731,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_initialize_public_method(self):
         """Test the public initialize() method."""
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(cwd, "test.conf")
-        fq = FQ(config_path)
+        fq = FQ(build_test_config())
         
         # Public initialize() should work
         await fq.initialize()
@@ -1797,10 +1792,8 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_properly_closes_connection(self):
         """Test close() method properly closes Redis connection."""
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(cwd, "test.conf")
-        fq = FQ(config_path)
-        await fq._initialize()
+        fq = FQ(build_test_config())
+        await fq.initialize()
         
         self.assertIsNotNone(fq._r)
         await fq.close()
@@ -1808,79 +1801,55 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_with_none_client(self):
         """Test close() when redis client is None."""
-        cwd = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(cwd, "test.conf")
-        fq = FQ(config_path)
+        fq = FQ(build_test_config())
         # Don't initialize, so _r is None
         await fq.close()  # Should not crash
         self.assertIsNone(fq._r)
 
     async def test_initialize_unix_socket_connection(self):
         """Test initialization with Unix socket connection - tests line 59."""
-        # Create a temporary config with unix_sock
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
-            f.write("""[fq]
-job_expire_interval       : 5000
-job_requeue_interval      : 5000
-default_job_requeue_limit : -1
+        config = build_test_config(
+            redis={
+                "key_prefix": "test_fq_unix",
+                "conn_type": "unix_sock",
+                "unix_socket_path": "/tmp/redis_nonexistent.sock",
+            }
+        )
 
-[redis]
-db                        : 0
-key_prefix                : test_fq_unix
-conn_type                 : unix_sock
-unix_socket_path          : /tmp/redis_nonexistent.sock
-""")
-            config_path = f.name
-        
-        try:
-            # Create a mock Redis class to capture initialization parameters
-            mock_redis_instance = MagicMock()
-            mock_redis_instance.ping = AsyncMock(return_value=True)
-            mock_redis_instance.register_script = MagicMock(return_value=MagicMock())
-            mock_redis_instance.aclose = AsyncMock()
-            
-            redis_init_kwargs = {}
-            
-            def mock_redis_constructor(**kwargs):
-                redis_init_kwargs.update(kwargs)
-                return mock_redis_instance
-            
-            # Patch Redis to intercept the initialization
-            with unittest.mock.patch('fq.queue.Redis', side_effect=mock_redis_constructor):
-                fq = FQ(config_path)
-                await fq._initialize()
-                
-                # Verify that Redis was initialized with unix_socket_path
-                self.assertIn('unix_socket_path', redis_init_kwargs)
-                self.assertEqual(redis_init_kwargs['unix_socket_path'], '/tmp/redis_nonexistent.sock')
-                self.assertEqual(int(redis_init_kwargs['db']), 0)
-                
-                await fq.close()
-        finally:
-            os.unlink(config_path)
+        # Create a mock Redis class to capture initialization parameters
+        mock_redis_instance = MagicMock()
+        mock_redis_instance.ping = AsyncMock(return_value=True)
+        mock_redis_instance.register_script = MagicMock(return_value=MagicMock())
+        mock_redis_instance.aclose = AsyncMock()
+
+        redis_init_kwargs = {}
+
+        def mock_redis_constructor(**kwargs):
+            redis_init_kwargs.update(kwargs)
+            return mock_redis_instance
+
+        # Patch Redis to intercept the initialization
+        with unittest.mock.patch("fq.queue.Redis", side_effect=mock_redis_constructor):
+            fq = FQ(config)
+            await fq.initialize()
+
+            # Verify that Redis was initialized with unix_socket_path
+            self.assertIn("unix_socket_path", redis_init_kwargs)
+            self.assertEqual(
+                redis_init_kwargs["unix_socket_path"], "/tmp/redis_nonexistent.sock"
+            )
+            self.assertEqual(int(redis_init_kwargs["db"]), 0)
+
+            await fq.close()
 
     async def test_initialize_unknown_connection_type(self):
-        """Test initialization with invalid connection type raises error - tests line 88."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
-            f.write("""[fq]
-job_expire_interval       : 5000
-job_requeue_interval      : 5000
-default_job_requeue_limit : -1
-
-[redis]
-db                        : 0
-key_prefix                : test_fq
-conn_type                 : invalid_type
-""")
-            config_path = f.name
-        
-        try:
-            fq = FQ(config_path)
-            # This tests line 88 - unknown conn_type
-            with self.assertRaisesRegex(FQException, "Unknown redis conn_type"):
-                await fq._initialize()
-        finally:
-            os.unlink(config_path)
+        """Test constructor validation with invalid connection type."""
+        config = build_test_config(redis={"conn_type": "invalid_type"})
+        with self.assertRaisesRegex(
+            FQException,
+            "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'",
+        ):
+            FQ(config)
 
     async def test_clear_queue_with_purge_all_and_string_job_uuid(self):
         """Test clear_queue with purge_all=True handles string job UUIDs - tests lines 464, 468."""
