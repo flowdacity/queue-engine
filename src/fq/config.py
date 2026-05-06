@@ -13,7 +13,6 @@ REDIS_CONN_TYPES = {"tcp_sock", "unix_sock"}
 
 @dataclass(frozen=True)
 class RedisConfig:
-    key_prefix: str
     conn_type: str
     db: int
     host: str | None = None
@@ -29,7 +28,6 @@ class RedisConfig:
         cls._validate_optional(config)
 
         return cls(
-            key_prefix=config["key_prefix"],
             conn_type=config["conn_type"],
             db=config["db"],
             host=config.get("host"),
@@ -41,12 +39,6 @@ class RedisConfig:
 
     @classmethod
     def _validate_required(cls, config):
-        key_prefix = cls._require_value(config, "key_prefix")
-        if not cls._is_non_empty_string(key_prefix):
-            raise FQException(
-                "Invalid config: redis.key_prefix must be a non-empty string"
-            )
-
         conn_type = cls._require_value(config, "conn_type")
         if conn_type not in REDIS_CONN_TYPES:
             raise FQException(
@@ -118,31 +110,77 @@ class RedisConfig:
 
 
 @dataclass(frozen=True)
-class FQConfig:
-    redis: RedisConfig
+class QueueConfig:
+    key_prefix: str
     job_expire_interval: int
     job_requeue_interval: int
     default_job_requeue_limit: int
 
     @classmethod
     def from_mapping(cls, config):
+        cls._validate_required(config)
+
+        return cls(
+            key_prefix=config["key_prefix"],
+            job_expire_interval=config["job_expire_interval"],
+            job_requeue_interval=config["job_requeue_interval"],
+            default_job_requeue_limit=config["default_job_requeue_limit"],
+        )
+
+    @classmethod
+    def _validate_required(cls, config):
+        key_prefix = cls._require_value(config, "key_prefix")
+        if not cls._is_non_empty_string(key_prefix):
+            raise FQException(
+                "Invalid config: queue.key_prefix must be a non-empty string"
+            )
+
+        for option_name in ("job_expire_interval", "job_requeue_interval"):
+            value = cls._require_value(config, option_name)
+            if not is_valid_interval(value):
+                raise FQException(
+                    "Invalid config: queue.%s must be a positive integer"
+                    % option_name
+                )
+
+        default_requeue_limit = cls._require_value(config, "default_job_requeue_limit")
+        if not is_valid_requeue_limit(default_requeue_limit):
+            raise FQException(
+                "Invalid config: "
+                "queue.default_job_requeue_limit must be an integer >= -1"
+            )
+
+    @staticmethod
+    def _require_value(config, option_name):
+        if option_name not in config:
+            raise FQException("Missing config: queue.%s" % option_name)
+
+        return config[option_name]
+
+    @staticmethod
+    def _is_non_empty_string(value):
+        return isinstance(value, str) and bool(value)
+
+
+@dataclass(frozen=True)
+class FQConfig:
+    redis: RedisConfig
+    queue: QueueConfig
+
+    @classmethod
+    def from_mapping(cls, config):
         normalized = cls._normalize_sections(config)
         cls._require_sections(normalized)
 
-        fq_config = normalized["fq"]
-        cls._validate_fq_section(fq_config)
-
         return cls(
             redis=RedisConfig.from_mapping(normalized["redis"]),
-            job_expire_interval=fq_config["job_expire_interval"],
-            job_requeue_interval=fq_config["job_requeue_interval"],
-            default_job_requeue_limit=fq_config["default_job_requeue_limit"],
+            queue=QueueConfig.from_mapping(normalized["queue"]),
         )
 
     @staticmethod
     def _normalize_sections(config):
         if not isinstance(config, Mapping):
-            raise FQException("Config must be a mapping with redis and fq sections")
+            raise FQException("Config must be a mapping with redis and queue sections")
 
         normalized = {}
         for section_name, section_values in config.items():
@@ -159,29 +197,5 @@ class FQConfig:
 
     @staticmethod
     def _require_sections(config):
-        if "redis" not in config or "fq" not in config:
-            raise FQException("Config missing required sections: redis, fq")
-
-    @classmethod
-    def _validate_fq_section(cls, config):
-        for option_name in ("job_expire_interval", "job_requeue_interval"):
-            value = cls._require_value(config, option_name)
-            if not is_valid_interval(value):
-                raise FQException(
-                    "Invalid config: fq.%s must be a positive integer" % option_name
-                )
-
-        default_requeue_limit = cls._require_value(
-            config, "default_job_requeue_limit"
-        )
-        if not is_valid_requeue_limit(default_requeue_limit):
-            raise FQException(
-                "Invalid config: fq.default_job_requeue_limit must be an integer >= -1"
-            )
-
-    @staticmethod
-    def _require_value(config, option_name):
-        if option_name not in config:
-            raise FQException("Missing config: fq.%s" % option_name)
-
-        return config[option_name]
+        if "redis" not in config or "queue" not in config:
+            raise FQException("Config missing required sections: redis, queue")

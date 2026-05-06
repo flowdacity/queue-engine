@@ -14,7 +14,7 @@ from tests.config import build_test_config
 
 class SyncFQTest(unittest.TestCase):
     def setUp(self):
-        self.queue = FQ(build_test_config(redis={"key_prefix": "test_fq_sync"}))
+        self.queue = FQ(build_test_config(queue={"key_prefix": "test_fq_sync"}))
         self.queue.initialize()
         self.queue._r.flushdb()
         self.queue_type = "sms"
@@ -94,8 +94,10 @@ class SyncFQTest(unittest.TestCase):
         self.queue.close()
         self.queue = FQ(
             build_test_config(
-                fq={"job_expire_interval": 20},
-                redis={"key_prefix": "test_fq_sync_requeue"},
+                queue={
+                    "job_expire_interval": 20,
+                    "key_prefix": "test_fq_sync_requeue",
+                },
             )
         )
         self.queue.initialize()
@@ -245,7 +247,7 @@ class SyncFQTest(unittest.TestCase):
             return errors
 
         async def collect_async_errors():
-            queue = AsyncFQ(build_test_config(redis={"key_prefix": "test_fq_async"}))
+            queue = AsyncFQ(build_test_config(queue={"key_prefix": "test_fq_async"}))
             await queue.initialize()
             await queue._r.flushdb()
             checks = [
@@ -289,7 +291,7 @@ class SyncFQTest(unittest.TestCase):
 
     def test_sync_async_interoperability(self):
         async def scenario():
-            config = build_test_config(redis={"key_prefix": "test_fq_sync_interop"})
+            config = build_test_config(queue={"key_prefix": "test_fq_sync_interop"})
             async_queue = AsyncFQ(config)
             sync_queue = FQ(config)
 

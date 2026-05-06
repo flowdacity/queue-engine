@@ -9,14 +9,14 @@ TEST_UNIX_SOCKET_PATH = join(gettempdir(), "redis.sock")
 
 
 TEST_CONFIG = {
-    "fq": {
+    "queue": {
+        "key_prefix": "test_fq",
         "job_expire_interval": 5000,
         "job_requeue_interval": 5000,
         "default_job_requeue_limit": -1,
     },
     "redis": {
         "db": 0,
-        "key_prefix": "test_fq",
         "conn_type": "tcp_sock",
         "unix_socket_path": TEST_UNIX_SOCKET_PATH,
         "port": 6379,

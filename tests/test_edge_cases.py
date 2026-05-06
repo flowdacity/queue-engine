@@ -150,6 +150,22 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(FQException, "Config must be a mapping"):
             FQ("does-not-exist.conf")
 
+    def test_missing_required_config_section_raises(self):
+        config = build_test_config()
+        del config["queue"]
+        with self.assertRaisesRegex(
+            FQException, "Config missing required sections: redis, queue"
+        ):
+            FQ(config)
+
+    def test_fq_config_section_is_not_supported(self):
+        config = build_test_config()
+        config["fq"] = config.pop("queue")
+        with self.assertRaisesRegex(
+            FQException, "Config missing required sections: redis, queue"
+        ):
+            FQ(config)
+
     async def test_initialize_fails_fast_on_bad_redis(self):
         with patch("fq.redis.AsyncRedis", FakeRedisConnectionFailure):
             fq = FQ(self.config)
@@ -159,8 +175,8 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def test_cluster_initialization(self):
         """Covers clustered Redis path (queue.py lines 69-75, 104-106)."""
         config = build_test_config(
+            queue={"key_prefix": "test_fq_cluster"},
             redis={
-                "key_prefix": "test_fq_cluster",
                 "clustered": True,
                 "password": "cluster-password",
             }
@@ -196,15 +212,15 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
 
     def test_missing_required_config_key_raises_with_path(self):
         config = build_test_config()
-        del config["redis"]["key_prefix"]
-        with self.assertRaisesRegex(FQException, "Missing config: redis.key_prefix"):
+        del config["queue"]["key_prefix"]
+        with self.assertRaisesRegex(FQException, "Missing config: queue.key_prefix"):
             FQ(config)
 
     def test_invalid_config_value_raises_with_path(self):
-        config = build_test_config(fq={"job_expire_interval": "5000"})
+        config = build_test_config(queue={"job_expire_interval": "5000"})
         with self.assertRaisesRegex(
             FQException,
-            "Invalid config: fq.job_expire_interval must be a positive integer",
+            "Invalid config: queue.job_expire_interval must be a positive integer",
         ):
             FQ(config)
 
@@ -253,7 +269,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             fq._r.key_set,
             (
-                "fq:deep_status:{}".format(fq.config.redis.key_prefix),
+                "fq:deep_status:{}".format(fq.config.queue.key_prefix),
                 "sharq_deep_status",
             ),
         )

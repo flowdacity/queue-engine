@@ -1811,8 +1811,8 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_unix_socket_connection(self):
         """Test initialization with Unix socket connection - tests line 59."""
         config = build_test_config(
+            queue={"key_prefix": "test_fq_unix"},
             redis={
-                "key_prefix": "test_fq_unix",
                 "conn_type": "unix_sock",
                 "unix_socket_path": NONEXISTENT_UNIX_SOCKET_PATH,
             }

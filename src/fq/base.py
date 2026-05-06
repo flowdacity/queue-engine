@@ -46,12 +46,12 @@ class BaseFQ(object):
         self._r = None
         self._scripts = None
         self.config = FQConfig.from_mapping(config)
-        self._keys = RedisKeys(self.config.redis.key_prefix)
+        self._keys = RedisKeys(self.config.queue.key_prefix)
 
-        self._key_prefix = self.config.redis.key_prefix
-        self._job_expire_interval = int(self.config.job_expire_interval)
+        self._key_prefix = self.config.queue.key_prefix
+        self._job_expire_interval = int(self.config.queue.job_expire_interval)
         self._default_job_requeue_limit = int(
-            self.config.default_job_requeue_limit
+            self.config.queue.default_job_requeue_limit
         )
 
     def redis_client(self):

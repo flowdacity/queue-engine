@@ -37,14 +37,14 @@ pip install -e .
 FQ accepts a simple config mapping. Intervals are in milliseconds.
 ```python
 config = {
-    "fq": {
+    "queue": {
+        "key_prefix": "queue_server",
         "job_expire_interval": 5000,
         "job_requeue_interval": 5000,
         "default_job_requeue_limit": -1,  # -1 retries forever, 0 means no retries
     },
     "redis": {
         "db": 0,
-        "key_prefix": "queue_server",
         "conn_type": "tcp_sock",  # or "unix_sock"
         "host": "127.0.0.1",
         "port": 6379,
@@ -77,14 +77,14 @@ from fq import FQ
 
 async def main():
     config = {
-        "fq": {
+        "queue": {
+            "key_prefix": "queue_server",
             "job_expire_interval": 5000,
             "job_requeue_interval": 5000,
             "default_job_requeue_limit": -1,
         },
         "redis": {
             "db": 0,
-            "key_prefix": "queue_server",
             "conn_type": "tcp_sock",
             "host": "127.0.0.1",
             "port": 6379,
@@ -131,14 +131,14 @@ from fq.sync import FQ
 
 
 config = {
-    "fq": {
+    "queue": {
+        "key_prefix": "queue_server",
         "job_expire_interval": 5000,
         "job_requeue_interval": 5000,
         "default_job_requeue_limit": -1,
     },
     "redis": {
         "db": 0,
-        "key_prefix": "queue_server",
         "conn_type": "tcp_sock",
         "host": "127.0.0.1",
         "port": 6379,
