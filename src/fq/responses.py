@@ -46,6 +46,8 @@ def format_queue_types(active_queue_types, ready_queue_types):
 
 
 def format_queue_ids(ready_queues, active_queues):
-    active_queues = [decode_redis_value(i).split(":")[0] for i in active_queues]
-    all_queue_set = set(ready_queues) | set(active_queues)
-    return convert_to_str(all_queue_set)
+    ready_queue_ids = {decode_redis_value(queue) for queue in ready_queues}
+    active_queue_ids = {
+        decode_redis_value(queue).split(":")[0] for queue in active_queues
+    }
+    return convert_to_str(ready_queue_ids | active_queue_ids)

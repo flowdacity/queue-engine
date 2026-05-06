@@ -8,15 +8,25 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fq import FQ
-from fq.utils import is_valid_identifier
+from fq.config import FQConfig
 from fq.exceptions import BadArgumentException, FQException
+from fq.redis import create_async_redis_client, create_sync_redis_client
+from fq.responses import format_queue_ids
+from fq.utils import is_valid_identifier
 from tests.config import build_test_config
 
 
 class FakeCluster:
-    def __init__(self, startup_nodes=None, decode_responses=False, socket_timeout=None):
+    def __init__(
+        self,
+        startup_nodes=None,
+        decode_responses=False,
+        password=None,
+        socket_timeout=None,
+    ):
         self.startup_nodes = startup_nodes or []
         self.decode_responses = decode_responses
+        self.password = password
         self.socket_timeout = socket_timeout
 
     def register_script(self, _):
@@ -113,6 +123,12 @@ class FakeRedisForClear:
         self.deleted_keys.append(key)
 
 
+class RecordingRedisClient:
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+
 class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
@@ -143,12 +159,17 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def test_cluster_initialization(self):
         """Covers clustered Redis path (queue.py lines 69-75, 104-106)."""
         config = build_test_config(
-            redis={"key_prefix": "test_fq_cluster", "clustered": True}
+            redis={
+                "key_prefix": "test_fq_cluster",
+                "clustered": True,
+                "password": "cluster-password",
+            }
         )
         with patch("fq.redis.AsyncRedisCluster", FakeCluster):
             fq = FQ(config)
             await fq.initialize()
             self.assertIsInstance(fq.redis_client(), FakeCluster)
+            self.assertEqual(fq.redis_client().password, "cluster-password")
             await fq.close()
 
     def test_clustered_config_must_be_boolean(self):
@@ -217,6 +238,51 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(is_valid_identifier(123))
         self.assertFalse(is_valid_identifier(None))
         self.assertFalse(is_valid_identifier(["a"]))
+
+    def test_format_queue_ids_deduplicates_ready_and_active_queues(self):
+        queue_ids = format_queue_ids(
+            ready_queues=[b"johndoe", b"ready-only"],
+            active_queues=[b"johndoe:job-1", "active-only:job-2"],
+        )
+
+        self.assertEqual(set(queue_ids), {"johndoe", "ready-only", "active-only"})
+        self.assertEqual(len(queue_ids), 3)
+
+    def test_redis_factories_pass_password_to_unix_socket_clients(self):
+        config = FQConfig.from_mapping(
+            build_test_config(
+                redis={
+                    "conn_type": "unix_sock",
+                    "password": "socket-password",
+                }
+            )
+        )
+
+        with patch("fq.redis.AsyncRedis", RecordingRedisClient):
+            async_client = create_async_redis_client(config.redis)
+        with patch("fq.redis.SyncRedis", RecordingRedisClient):
+            sync_client = create_sync_redis_client(config.redis)
+
+        self.assertEqual(async_client.kwargs["password"], "socket-password")
+        self.assertEqual(sync_client.kwargs["password"], "socket-password")
+
+    def test_redis_factories_pass_password_to_cluster_clients(self):
+        config = FQConfig.from_mapping(
+            build_test_config(
+                redis={
+                    "clustered": True,
+                    "password": "cluster-password",
+                }
+            )
+        )
+
+        with patch("fq.redis.AsyncRedisCluster", RecordingRedisClient):
+            async_client = create_async_redis_client(config.redis)
+        with patch("fq.redis.SyncRedisCluster", RecordingRedisClient):
+            sync_client = create_sync_redis_client(config.redis)
+
+        self.assertEqual(async_client.kwargs["password"], "cluster-password")
+        self.assertEqual(sync_client.kwargs["password"], "cluster-password")
 
     async def test_clear_queue_purge_all_with_mixed_job_ids(self):
         """Covers purge_all loop branches (queue.py lines 463-468, 474-479)."""

@@ -14,6 +14,7 @@ def create_async_redis_client(redis_config):
         return AsyncRedis(
             db=redis_config.db,
             unix_socket_path=redis_config.unix_socket_path,
+            password=redis_config.password,
         )
 
     if redis_config.conn_type == "tcp_sock":
@@ -27,6 +28,7 @@ def create_async_redis_client(redis_config):
             return AsyncRedisCluster(
                 startup_nodes=startup_nodes,
                 decode_responses=False,
+                password=redis_config.password,
                 socket_timeout=5,
             )
 
@@ -45,6 +47,7 @@ def create_sync_redis_client(redis_config):
         return SyncRedis(
             db=redis_config.db,
             unix_socket_path=redis_config.unix_socket_path,
+            password=redis_config.password,
         )
 
     if redis_config.conn_type == "tcp_sock":
@@ -53,6 +56,7 @@ def create_sync_redis_client(redis_config):
                 host=redis_config.host,
                 port=int(redis_config.port),
                 decode_responses=False,
+                password=redis_config.password,
                 socket_timeout=5,
             )
 
