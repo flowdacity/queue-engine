@@ -9,7 +9,7 @@ LUA_SCRIPT_NAMES = ("enqueue", "dequeue", "finish", "interval", "requeue", "metr
 
 
 @dataclass(frozen=True)
-class Lua:
+class LuaScripts:
     enqueue: object
     dequeue: object
     finish: object
