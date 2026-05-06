@@ -78,5 +78,4 @@ def convert_to_str(queue_set):
             queue_list.append(queue.decode("utf-8"))
         except Exception:
             queue_list.append(queue)
-            pass
     return queue_list

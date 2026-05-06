@@ -3,6 +3,7 @@
 
 
 import unittest
+from contextlib import suppress
 from unittest.mock import patch
 
 from fq import FQ
@@ -55,7 +56,8 @@ class FakeRedisForDeepStatus:
 
 class FakeRedisConnectionFailure:
     def __init__(self, *args, **kwargs):
-        pass
+        self.init_args = args
+        self.init_kwargs = kwargs
 
     async def ping(self):
         raise ConnectionError("boom")
@@ -111,27 +113,25 @@ class FakeRedisForClear:
 
 
 class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
         self.config = build_test_config()
         self.fq_instance = None
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncTearDown(self):
         """Clean up Redis state and close connections after each test."""
         # If a test initialized FQ with real Redis, clean up
         if self.fq_instance is not None:
-            try:
+            with suppress(Exception):
                 if self.fq_instance._r is not None:
                     await self.fq_instance._r.flushdb()
                 await self.fq_instance.close()
-            except Exception:
-                # Ignore errors during cleanup - tests may have mocked or closed connections
-                # This prevents tearDown failures from masking test failures
-                pass
             self.fq_instance = None
 
     def test_invalid_config_type_raises(self):
         with self.assertRaisesRegex(FQException, "Config must be a mapping"):
-            FQ("/tmp/does-not-exist.conf")
+            FQ("does-not-exist.conf")
 
     async def test_initialize_fails_fast_on_bad_redis(self):
         with patch("fq.queue.Redis", FakeRedisConnectionFailure):

@@ -5,12 +5,16 @@ import math
 import asyncio
 import unittest
 import msgpack
+from os.path import join
+from tempfile import gettempdir
 from unittest.mock import AsyncMock, MagicMock
 from fq import FQ
 from fq.exceptions import FQException
 from fq.utils import generate_epoch, deserialize_payload
 from tests.config import build_test_config
 
+
+NONEXISTENT_UNIX_SOCKET_PATH = join(gettempdir(), "redis_nonexistent.sock")
 
 
 class FQTestCase(unittest.IsolatedAsyncioTestCase):
@@ -20,6 +24,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
     by FQ.
     """
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
         self.queue = FQ(build_test_config())
         # flush all the keys in the test db before starting test
@@ -605,7 +610,6 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # job 2
         job_id = self._get_job_id()
-        str(generate_epoch())
         await self.queue.enqueue(
             payload=self._test_payload_2,
             interval=20000,
@@ -633,7 +637,6 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # job 2
         job_id = self._get_job_id()
-        str(generate_epoch())
         await self.queue.enqueue(
             payload=self._test_payload_2,
             interval=20000,
@@ -1811,7 +1814,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             redis={
                 "key_prefix": "test_fq_unix",
                 "conn_type": "unix_sock",
-                "unix_socket_path": "/tmp/redis_nonexistent.sock",
+                "unix_socket_path": NONEXISTENT_UNIX_SOCKET_PATH,
             }
         )
 
@@ -1835,7 +1838,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             # Verify that Redis was initialized with unix_socket_path
             self.assertIn("unix_socket_path", redis_init_kwargs)
             self.assertEqual(
-                redis_init_kwargs["unix_socket_path"], "/tmp/redis_nonexistent.sock"
+                redis_init_kwargs["unix_socket_path"], NONEXISTENT_UNIX_SOCKET_PATH
             )
             self.assertEqual(int(redis_init_kwargs["db"]), 0)
 
@@ -1915,6 +1918,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("key2", result)
         self.assertIn("key3", result)
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncTearDown(self):
         await self.queue._r.flushdb()
         await self.queue.close()

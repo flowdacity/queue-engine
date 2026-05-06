@@ -11,6 +11,7 @@ from tests.config import build_test_config
 class FQTest(unittest.IsolatedAsyncioTestCase):
     """The FQTest contains test cases which validate the FQ interface."""
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
         self.queue = FQ(build_test_config())
         await self.queue.initialize()
@@ -58,6 +59,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         # flush redis before start
         await self.queue._r.flushdb()
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncTearDown(self):
         # flush redis at the end and close connection
         await self.queue._r.flushdb()

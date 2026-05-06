@@ -16,9 +16,31 @@ from fq.utils import (
 )
 
 LUA_SCRIPT_NAMES = ("enqueue", "dequeue", "finish", "interval", "requeue", "metrics")
+REDIS_CONN_TYPES = {"tcp_sock", "unix_sock"}
+
+INVALID_INTERVAL = "`interval` has an invalid value."
+INVALID_JOB_ID = "`job_id` has an invalid value."
+INVALID_QUEUE_ID = "`queue_id` has an invalid value."
+INVALID_QUEUE_TYPE = "`queue_type` has an invalid value."
+INVALID_REQUEUE_LIMIT = "`requeue_limit` has an invalid value."
 
 
 def normalize_config(config):
+    normalized = _normalize_config_sections(config)
+    _require_config_sections(normalized)
+
+    redis_config = normalized["redis"]
+    fq_config = normalized["fq"]
+
+    _validate_redis_config(redis_config)
+    _validate_fq_config(fq_config)
+    _validate_connection_config(redis_config)
+    _validate_optional_redis_config(redis_config)
+
+    return normalized
+
+
+def _normalize_config_sections(config):
     if not isinstance(config, Mapping):
         raise FQException("Config must be a mapping with redis and fq sections")
 
@@ -31,85 +53,102 @@ def normalize_config(config):
             str(option): value for option, value in section_values.items()
         }
 
-    if "redis" not in normalized or "fq" not in normalized:
+    return normalized
+
+
+def _require_config_sections(config):
+    if "redis" not in config or "fq" not in config:
         raise FQException("Config missing required sections: redis, fq")
 
-    redis_config = normalized["redis"]
-    fq_config = normalized["fq"]
 
-    if "key_prefix" not in redis_config:
-        raise FQException("Missing config: redis.key_prefix")
-    if not isinstance(redis_config["key_prefix"], str) or not redis_config[
-        "key_prefix"
-    ]:
+def _require_config_value(config, section_name, option_name):
+    if option_name not in config:
+        raise FQException("Missing config: %s.%s" % (section_name, option_name))
+
+    return config[option_name]
+
+
+def _is_non_empty_string(value):
+    return isinstance(value, str) and bool(value)
+
+
+def _is_int_not_bool(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_redis_config(redis_config):
+    key_prefix = _require_config_value(redis_config, "redis", "key_prefix")
+    if not _is_non_empty_string(key_prefix):
         raise FQException("Invalid config: redis.key_prefix must be a non-empty string")
 
-    if "conn_type" not in redis_config:
-        raise FQException("Missing config: redis.conn_type")
-    if redis_config["conn_type"] not in {"tcp_sock", "unix_sock"}:
+    conn_type = _require_config_value(redis_config, "redis", "conn_type")
+    if conn_type not in REDIS_CONN_TYPES:
         raise FQException(
             "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'"
         )
 
-    if "db" not in redis_config:
-        raise FQException("Missing config: redis.db")
-    if isinstance(redis_config["db"], bool) or not isinstance(redis_config["db"], int):
+    db = _require_config_value(redis_config, "redis", "db")
+    if not _is_int_not_bool(db):
         raise FQException("Invalid config: redis.db must be an integer")
 
-    if "job_expire_interval" not in fq_config:
-        raise FQException("Missing config: fq.job_expire_interval")
-    if not is_valid_interval(fq_config["job_expire_interval"]):
-        raise FQException(
-            "Invalid config: fq.job_expire_interval must be a positive integer"
-        )
 
-    if "job_requeue_interval" not in fq_config:
-        raise FQException("Missing config: fq.job_requeue_interval")
-    if not is_valid_interval(fq_config["job_requeue_interval"]):
-        raise FQException(
-            "Invalid config: fq.job_requeue_interval must be a positive integer"
-        )
+def _validate_fq_config(fq_config):
+    for option_name in ("job_expire_interval", "job_requeue_interval"):
+        value = _require_config_value(fq_config, "fq", option_name)
+        if not is_valid_interval(value):
+            raise FQException(
+                "Invalid config: fq.%s must be a positive integer" % option_name
+            )
 
-    if "default_job_requeue_limit" not in fq_config:
-        raise FQException("Missing config: fq.default_job_requeue_limit")
-    if not is_valid_requeue_limit(fq_config["default_job_requeue_limit"]):
+    default_requeue_limit = _require_config_value(
+        fq_config, "fq", "default_job_requeue_limit"
+    )
+    if not is_valid_requeue_limit(default_requeue_limit):
         raise FQException(
             "Invalid config: fq.default_job_requeue_limit must be an integer >= -1"
         )
 
+
+def _validate_connection_config(redis_config):
     if redis_config["conn_type"] == "unix_sock":
-        if "unix_socket_path" not in redis_config:
-            raise FQException("Missing config: redis.unix_socket_path")
-        if not isinstance(redis_config["unix_socket_path"], str) or not redis_config[
-            "unix_socket_path"
-        ]:
-            raise FQException(
-                "Invalid config: redis.unix_socket_path must be a non-empty string"
-            )
+        _validate_unix_socket_config(redis_config)
+        return
 
-    if redis_config["conn_type"] == "tcp_sock":
-        if "host" not in redis_config:
-            raise FQException("Missing config: redis.host")
-        if not isinstance(redis_config["host"], str) or not redis_config["host"]:
-            raise FQException("Invalid config: redis.host must be a non-empty string")
+    _validate_tcp_socket_config(redis_config)
 
-        if "port" not in redis_config:
-            raise FQException("Missing config: redis.port")
-        if isinstance(redis_config["port"], bool) or not isinstance(
-            redis_config["port"], int
-        ):
-            raise FQException("Invalid config: redis.port must be an integer")
 
-        if "clustered" in redis_config and not isinstance(
-            redis_config["clustered"], bool
-        ):
-            raise FQException("Invalid config: redis.clustered must be a boolean")
+def _validate_unix_socket_config(redis_config):
+    unix_socket_path = _require_config_value(
+        redis_config, "redis", "unix_socket_path"
+    )
+    if not _is_non_empty_string(unix_socket_path):
+        raise FQException(
+            "Invalid config: redis.unix_socket_path must be a non-empty string"
+        )
 
+
+def _validate_tcp_socket_config(redis_config):
+    host = _require_config_value(redis_config, "redis", "host")
+    if not _is_non_empty_string(host):
+        raise FQException("Invalid config: redis.host must be a non-empty string")
+
+    port = _require_config_value(redis_config, "redis", "port")
+    if not _is_int_not_bool(port):
+        raise FQException("Invalid config: redis.port must be an integer")
+
+    if "clustered" in redis_config and not isinstance(redis_config["clustered"], bool):
+        raise FQException("Invalid config: redis.clustered must be a boolean")
+
+
+def _validate_optional_redis_config(redis_config):
     if "password" in redis_config and redis_config["password"] is not None:
         if not isinstance(redis_config["password"], str):
             raise FQException("Invalid config: redis.password must be a string")
 
-    return normalized
+
+def _validate_identifier(identifier, message):
+    if not is_valid_identifier(identifier):
+        raise BadArgumentException(message)
 
 
 def load_lua_scripts(instance, redis_client):
@@ -142,22 +181,17 @@ def validate_enqueue_arguments(
     default_requeue_limit,
 ):
     if not is_valid_interval(interval):
-        raise BadArgumentException("`interval` has an invalid value.")
+        raise BadArgumentException(INVALID_INTERVAL)
 
-    if not is_valid_identifier(job_id):
-        raise BadArgumentException("`job_id` has an invalid value.")
-
-    if not is_valid_identifier(queue_id):
-        raise BadArgumentException("`queue_id` has an invalid value.")
-
-    if not is_valid_identifier(queue_type):
-        raise BadArgumentException("`queue_type` has an invalid value.")
+    _validate_identifier(job_id, INVALID_JOB_ID)
+    _validate_identifier(queue_id, INVALID_QUEUE_ID)
+    _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
 
     if requeue_limit is None:
         requeue_limit = default_requeue_limit
 
     if not is_valid_requeue_limit(requeue_limit):
-        raise BadArgumentException("`requeue_limit` has an invalid value.")
+        raise BadArgumentException(INVALID_REQUEUE_LIMIT)
 
     try:
         serialized_payload = serialize_payload(payload)
@@ -168,54 +202,42 @@ def validate_enqueue_arguments(
 
 
 def validate_dequeue_arguments(queue_type):
-    if not is_valid_identifier(queue_type):
-        raise BadArgumentException("`queue_type` has an invalid value.")
+    _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
 
 
 def validate_finish_arguments(job_id, queue_id, queue_type):
-    if not is_valid_identifier(job_id):
-        raise BadArgumentException("`job_id` has an invalid value.")
-
-    if not is_valid_identifier(queue_id):
-        raise BadArgumentException("`queue_id` has an invalid value.")
-
-    if not is_valid_identifier(queue_type):
-        raise BadArgumentException("`queue_type` has an invalid value.")
+    _validate_identifier(job_id, INVALID_JOB_ID)
+    _validate_identifier(queue_id, INVALID_QUEUE_ID)
+    _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
 
 
 def validate_interval_arguments(interval, queue_id, queue_type):
     if not is_valid_interval(interval):
-        raise BadArgumentException("`interval` has an invalid value.")
+        raise BadArgumentException(INVALID_INTERVAL)
 
-    if not is_valid_identifier(queue_id):
-        raise BadArgumentException("`queue_id` has an invalid value.")
-
-    if not is_valid_identifier(queue_type):
-        raise BadArgumentException("`queue_type` has an invalid value.")
+    _validate_identifier(queue_id, INVALID_QUEUE_ID)
+    _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
 
 
 def validate_metrics_arguments(queue_type, queue_id):
     if queue_id is not None and not is_valid_identifier(queue_id):
-        raise BadArgumentException("`queue_id` has an invalid value.")
+        raise BadArgumentException(INVALID_QUEUE_ID)
 
     if queue_type is not None and not is_valid_identifier(queue_type):
-        raise BadArgumentException("`queue_type` has an invalid value.")
+        raise BadArgumentException(INVALID_QUEUE_TYPE)
 
 
 def validate_clear_queue_arguments(queue_type, queue_id):
     if queue_id is None or not is_valid_identifier(queue_id):
-        raise BadArgumentException("`queue_id` has an invalid value.")
+        raise BadArgumentException(INVALID_QUEUE_ID)
 
     if queue_type is None or not is_valid_identifier(queue_type):
-        raise BadArgumentException("`queue_type` has an invalid value.")
+        raise BadArgumentException(INVALID_QUEUE_TYPE)
 
 
 def validate_get_queue_length_arguments(queue_type, queue_id):
-    if not is_valid_identifier(queue_type):
-        raise BadArgumentException("`queue_type` has an invalid value.")
-
-    if not is_valid_identifier(queue_id):
-        raise BadArgumentException("`queue_id` has an invalid value.")
+    _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
+    _validate_identifier(queue_id, INVALID_QUEUE_ID)
 
 
 def decode_redis_value(value):
