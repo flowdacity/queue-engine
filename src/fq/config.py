@@ -22,6 +22,100 @@ class RedisConfig:
     clustered: bool = False
     password: str | None = None
 
+    @classmethod
+    def from_mapping(cls, config):
+        cls._validate_required(config)
+        cls._validate_connection(config)
+        cls._validate_optional(config)
+
+        return cls(
+            key_prefix=config["key_prefix"],
+            conn_type=config["conn_type"],
+            db=config["db"],
+            host=config.get("host"),
+            port=config.get("port"),
+            unix_socket_path=config.get("unix_socket_path"),
+            clustered=config.get("clustered", False),
+            password=config.get("password"),
+        )
+
+    @classmethod
+    def _validate_required(cls, config):
+        key_prefix = cls._require_value(config, "key_prefix")
+        if not cls._is_non_empty_string(key_prefix):
+            raise FQException(
+                "Invalid config: redis.key_prefix must be a non-empty string"
+            )
+
+        conn_type = cls._require_value(config, "conn_type")
+        if conn_type not in REDIS_CONN_TYPES:
+            raise FQException(
+                "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'"
+            )
+
+        db = cls._require_value(config, "db")
+        if not cls._is_int_not_bool(db):
+            raise FQException("Invalid config: redis.db must be an integer")
+
+    @classmethod
+    def _validate_connection(cls, config):
+        cls._validate_clustered(config)
+
+        if config["conn_type"] == "unix_sock":
+            cls._validate_unix_socket(config)
+            return
+
+        cls._validate_tcp_socket(config)
+
+    @classmethod
+    def _validate_clustered(cls, config):
+        if "clustered" in config and not isinstance(config["clustered"], bool):
+            raise FQException("Invalid config: redis.clustered must be a boolean")
+
+    @classmethod
+    def _validate_unix_socket(cls, config):
+        unix_socket_path = cls._require_value(config, "unix_socket_path")
+        if not cls._is_non_empty_string(unix_socket_path):
+            raise FQException(
+                "Invalid config: redis.unix_socket_path must be a non-empty string"
+            )
+
+    @classmethod
+    def _validate_tcp_socket(cls, config):
+        host = cls._require_value(config, "host")
+        if not cls._is_non_empty_string(host):
+            raise FQException("Invalid config: redis.host must be a non-empty string")
+
+        port = cls._require_value(config, "port")
+        if not cls._is_int_not_bool(port):
+            raise FQException("Invalid config: redis.port must be an integer")
+
+        if port < 1 or port > 65535:
+            raise FQException(
+                "Invalid config: redis.port must be an integer between 1 and 65535"
+            )
+
+    @classmethod
+    def _validate_optional(cls, config):
+        if "password" in config and config["password"] is not None:
+            if not isinstance(config["password"], str):
+                raise FQException("Invalid config: redis.password must be a string")
+
+    @staticmethod
+    def _require_value(config, option_name):
+        if option_name not in config:
+            raise FQException("Missing config: redis.%s" % option_name)
+
+        return config[option_name]
+
+    @staticmethod
+    def _is_non_empty_string(value):
+        return isinstance(value, str) and bool(value)
+
+    @staticmethod
+    def _is_int_not_bool(value):
+        return isinstance(value, int) and not isinstance(value, bool)
+
 
 @dataclass(frozen=True)
 class FQConfig:
@@ -32,142 +126,62 @@ class FQConfig:
 
     @classmethod
     def from_mapping(cls, config):
-        normalized = _normalize_config_sections(config)
-        _require_config_sections(normalized)
+        normalized = cls._normalize_sections(config)
+        cls._require_sections(normalized)
 
-        redis_config = normalized["redis"]
         fq_config = normalized["fq"]
-
-        _validate_redis_config(redis_config)
-        _validate_fq_config(fq_config)
-        _validate_connection_config(redis_config)
-        _validate_optional_redis_config(redis_config)
+        cls._validate_fq_section(fq_config)
 
         return cls(
-            redis=RedisConfig(
-                key_prefix=redis_config["key_prefix"],
-                conn_type=redis_config["conn_type"],
-                db=redis_config["db"],
-                host=redis_config.get("host"),
-                port=redis_config.get("port"),
-                unix_socket_path=redis_config.get("unix_socket_path"),
-                clustered=redis_config.get("clustered", False),
-                password=redis_config.get("password"),
-            ),
+            redis=RedisConfig.from_mapping(normalized["redis"]),
             job_expire_interval=fq_config["job_expire_interval"],
             job_requeue_interval=fq_config["job_requeue_interval"],
             default_job_requeue_limit=fq_config["default_job_requeue_limit"],
         )
 
+    @staticmethod
+    def _normalize_sections(config):
+        if not isinstance(config, Mapping):
+            raise FQException("Config must be a mapping with redis and fq sections")
 
-def _normalize_config_sections(config):
-    if not isinstance(config, Mapping):
-        raise FQException("Config must be a mapping with redis and fq sections")
+        normalized = {}
+        for section_name, section_values in config.items():
+            if not isinstance(section_values, Mapping):
+                raise FQException(
+                    "Config section '%s' must be a mapping" % section_name
+                )
 
-    normalized = {}
-    for section_name, section_values in config.items():
-        if not isinstance(section_values, Mapping):
-            raise FQException("Config section '%s' must be a mapping" % section_name)
+            normalized[str(section_name)] = {
+                str(option): value for option, value in section_values.items()
+            }
 
-        normalized[str(section_name)] = {
-            str(option): value for option, value in section_values.items()
-        }
+        return normalized
 
-    return normalized
+    @staticmethod
+    def _require_sections(config):
+        if "redis" not in config or "fq" not in config:
+            raise FQException("Config missing required sections: redis, fq")
 
+    @classmethod
+    def _validate_fq_section(cls, config):
+        for option_name in ("job_expire_interval", "job_requeue_interval"):
+            value = cls._require_value(config, option_name)
+            if not is_valid_interval(value):
+                raise FQException(
+                    "Invalid config: fq.%s must be a positive integer" % option_name
+                )
 
-def _require_config_sections(config):
-    if "redis" not in config or "fq" not in config:
-        raise FQException("Config missing required sections: redis, fq")
-
-
-def _require_config_value(config, section_name, option_name):
-    if option_name not in config:
-        raise FQException("Missing config: %s.%s" % (section_name, option_name))
-
-    return config[option_name]
-
-
-def _is_non_empty_string(value):
-    return isinstance(value, str) and bool(value)
-
-
-def _is_int_not_bool(value):
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _validate_redis_config(redis_config):
-    key_prefix = _require_config_value(redis_config, "redis", "key_prefix")
-    if not _is_non_empty_string(key_prefix):
-        raise FQException("Invalid config: redis.key_prefix must be a non-empty string")
-
-    conn_type = _require_config_value(redis_config, "redis", "conn_type")
-    if conn_type not in REDIS_CONN_TYPES:
-        raise FQException(
-            "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'"
+        default_requeue_limit = cls._require_value(
+            config, "default_job_requeue_limit"
         )
-
-    db = _require_config_value(redis_config, "redis", "db")
-    if not _is_int_not_bool(db):
-        raise FQException("Invalid config: redis.db must be an integer")
-
-
-def _validate_fq_config(fq_config):
-    for option_name in ("job_expire_interval", "job_requeue_interval"):
-        value = _require_config_value(fq_config, "fq", option_name)
-        if not is_valid_interval(value):
+        if not is_valid_requeue_limit(default_requeue_limit):
             raise FQException(
-                "Invalid config: fq.%s must be a positive integer" % option_name
+                "Invalid config: fq.default_job_requeue_limit must be an integer >= -1"
             )
 
-    default_requeue_limit = _require_config_value(
-        fq_config, "fq", "default_job_requeue_limit"
-    )
-    if not is_valid_requeue_limit(default_requeue_limit):
-        raise FQException(
-            "Invalid config: fq.default_job_requeue_limit must be an integer >= -1"
-        )
+    @staticmethod
+    def _require_value(config, option_name):
+        if option_name not in config:
+            raise FQException("Missing config: fq.%s" % option_name)
 
-
-def _validate_connection_config(redis_config):
-    _validate_clustered_config(redis_config)
-
-    if redis_config["conn_type"] == "unix_sock":
-        _validate_unix_socket_config(redis_config)
-        return
-
-    _validate_tcp_socket_config(redis_config)
-
-
-def _validate_clustered_config(redis_config):
-    if "clustered" in redis_config and not isinstance(redis_config["clustered"], bool):
-        raise FQException("Invalid config: redis.clustered must be a boolean")
-
-
-def _validate_unix_socket_config(redis_config):
-    unix_socket_path = _require_config_value(redis_config, "redis", "unix_socket_path")
-    if not _is_non_empty_string(unix_socket_path):
-        raise FQException(
-            "Invalid config: redis.unix_socket_path must be a non-empty string"
-        )
-
-
-def _validate_tcp_socket_config(redis_config):
-    host = _require_config_value(redis_config, "redis", "host")
-    if not _is_non_empty_string(host):
-        raise FQException("Invalid config: redis.host must be a non-empty string")
-
-    port = _require_config_value(redis_config, "redis", "port")
-    if not _is_int_not_bool(port):
-        raise FQException("Invalid config: redis.port must be an integer")
-
-    if port < 1 or port > 65535:
-        raise FQException(
-            "Invalid config: redis.port must be an integer between 1 and 65535"
-        )
-
-
-def _validate_optional_redis_config(redis_config):
-    if "password" in redis_config and redis_config["password"] is not None:
-        if not isinstance(redis_config["password"], str):
-            raise FQException("Invalid config: redis.password must be a string")
+        return config[option_name]
