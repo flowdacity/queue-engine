@@ -712,7 +712,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             queue_id=self._test_queue_id,
             queue_type=self._test_queue_type,
         )
-        response = await self.queue.dequeue(queue_type=self._test_queue_type)
+        await self.queue.dequeue(queue_type=self._test_queue_type)
 
         time_keeper_key_name = "%s:%s:%s:time" % (
             self.queue._key_prefix,
