@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
 import uuid
-import time
 import math
 import asyncio
 import unittest
 import msgpack
+from os.path import join
+from tempfile import gettempdir
 from unittest.mock import AsyncMock, MagicMock
 from fq import FQ
 from fq.exceptions import FQException
 from fq.utils import generate_epoch, deserialize_payload
 from tests.config import build_test_config
 
+
+NONEXISTENT_UNIX_SOCKET_PATH = join(gettempdir(), "redis_nonexistent.sock")
 
 
 class FQTestCase(unittest.IsolatedAsyncioTestCase):
@@ -21,6 +24,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
     by FQ.
     """
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
         self.queue = FQ(build_test_config())
         # flush all the keys in the test db before starting test
@@ -606,7 +610,6 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # job 2
         job_id = self._get_job_id()
-        start_time = str(generate_epoch())
         await self.queue.enqueue(
             payload=self._test_payload_2,
             interval=20000,
@@ -634,7 +637,6 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # job 2
         job_id = self._get_job_id()
-        start_time = str(generate_epoch())
         await self.queue.enqueue(
             payload=self._test_payload_2,
             interval=20000,
@@ -712,7 +714,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             queue_id=self._test_queue_id,
             queue_type=self._test_queue_type,
         )
-        response = await self.queue.dequeue(queue_type=self._test_queue_type)
+        await self.queue.dequeue(queue_type=self._test_queue_type)
 
         time_keeper_key_name = "%s:%s:%s:time" % (
             self.queue._key_prefix,
@@ -1738,7 +1740,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         
         # Verify initialization succeeded
         self.assertIsNotNone(fq._r)
-        self.assertIsNotNone(fq._lua_enqueue)
+        self.assertIsNotNone(fq._scripts.enqueue)
         
         # Cleanup
         await fq.close()
@@ -1809,10 +1811,10 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_unix_socket_connection(self):
         """Test initialization with Unix socket connection - tests line 59."""
         config = build_test_config(
+            queue={"key_prefix": "test_fq_unix"},
             redis={
-                "key_prefix": "test_fq_unix",
                 "conn_type": "unix_sock",
-                "unix_socket_path": "/tmp/redis_nonexistent.sock",
+                "unix_socket_path": NONEXISTENT_UNIX_SOCKET_PATH,
             }
         )
 
@@ -1829,14 +1831,17 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_redis_instance
 
         # Patch Redis to intercept the initialization
-        with unittest.mock.patch("fq.queue.Redis", side_effect=mock_redis_constructor):
+        with unittest.mock.patch(
+            "fq.redis.AsyncRedis",
+            side_effect=mock_redis_constructor,
+        ):
             fq = FQ(config)
             await fq.initialize()
 
             # Verify that Redis was initialized with unix_socket_path
             self.assertIn("unix_socket_path", redis_init_kwargs)
             self.assertEqual(
-                redis_init_kwargs["unix_socket_path"], "/tmp/redis_nonexistent.sock"
+                redis_init_kwargs["unix_socket_path"], NONEXISTENT_UNIX_SOCKET_PATH
             )
             self.assertEqual(int(redis_init_kwargs["db"]), 0)
 
@@ -1916,6 +1921,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("key2", result)
         self.assertIn("key3", result)
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncTearDown(self):
         await self.queue._r.flushdb()
         await self.queue.close()

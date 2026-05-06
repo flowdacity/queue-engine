@@ -3,18 +3,30 @@
 
 
 import unittest
+from contextlib import suppress
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fq import FQ
-from fq.utils import is_valid_identifier
+from fq.config import FQConfig
 from fq.exceptions import BadArgumentException, FQException
+from fq.redis import create_async_redis_client, create_sync_redis_client
+from fq.responses import format_queue_ids
+from fq.utils import is_valid_identifier
 from tests.config import build_test_config
 
 
 class FakeCluster:
-    def __init__(self, startup_nodes=None, decode_responses=False, socket_timeout=None):
+    def __init__(
+        self,
+        startup_nodes=None,
+        decode_responses=False,
+        password=None,
+        socket_timeout=None,
+    ):
         self.startup_nodes = startup_nodes or []
         self.decode_responses = decode_responses
+        self.password = password
         self.socket_timeout = socket_timeout
 
     def register_script(self, _):
@@ -55,7 +67,8 @@ class FakeRedisForDeepStatus:
 
 class FakeRedisConnectionFailure:
     def __init__(self, *args, **kwargs):
-        pass
+        self.init_args = args
+        self.init_kwargs = kwargs
 
     async def ping(self):
         raise ConnectionError("boom")
@@ -110,31 +123,51 @@ class FakeRedisForClear:
         self.deleted_keys.append(key)
 
 
+class RecordingRedisClient:
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+
 class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
         self.config = build_test_config()
         self.fq_instance = None
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncTearDown(self):
         """Clean up Redis state and close connections after each test."""
         # If a test initialized FQ with real Redis, clean up
         if self.fq_instance is not None:
-            try:
+            with suppress(Exception):
                 if self.fq_instance._r is not None:
                     await self.fq_instance._r.flushdb()
                 await self.fq_instance.close()
-            except Exception:
-                # Ignore errors during cleanup - tests may have mocked or closed connections
-                # This prevents tearDown failures from masking test failures
-                pass
             self.fq_instance = None
 
     def test_invalid_config_type_raises(self):
         with self.assertRaisesRegex(FQException, "Config must be a mapping"):
-            FQ("/tmp/does-not-exist.conf")
+            FQ("does-not-exist.conf")
+
+    def test_missing_required_config_section_raises(self):
+        config = build_test_config()
+        del config["queue"]
+        with self.assertRaisesRegex(
+            FQException, "Config missing required sections: redis, queue"
+        ):
+            FQ(config)
+
+    def test_fq_config_section_is_not_supported(self):
+        config = build_test_config()
+        config["fq"] = config.pop("queue")
+        with self.assertRaisesRegex(
+            FQException, "Config missing required sections: redis, queue"
+        ):
+            FQ(config)
 
     async def test_initialize_fails_fast_on_bad_redis(self):
-        with patch("fq.queue.Redis", FakeRedisConnectionFailure):
+        with patch("fq.redis.AsyncRedis", FakeRedisConnectionFailure):
             fq = FQ(self.config)
             with self.assertRaisesRegex(FQException, "Failed to connect to Redis"):
                 await fq.initialize()
@@ -142,12 +175,20 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def test_cluster_initialization(self):
         """Covers clustered Redis path (queue.py lines 69-75, 104-106)."""
         config = build_test_config(
-            redis={"key_prefix": "test_fq_cluster", "clustered": True}
+            queue={"key_prefix": "test_fq_cluster"},
+            redis={
+                "clustered": True,
+                "password": "cluster-password",
+            }
         )
-        with patch("fq.queue.RedisCluster", FakeCluster):
+        with patch("fq.redis.AsyncRedisCluster", FakeCluster):
             fq = FQ(config)
             await fq.initialize()
             self.assertIsInstance(fq.redis_client(), FakeCluster)
+            self.assertEqual(fq.redis_client().password, "cluster-password")
+            startup_node = fq.redis_client().startup_nodes[0]
+            self.assertEqual(startup_node.host, "127.0.0.1")
+            self.assertEqual(startup_node.port, 6379)
             await fq.close()
 
     def test_clustered_config_must_be_boolean(self):
@@ -157,19 +198,41 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         ):
             FQ(config)
 
+    def test_unix_socket_clustered_config_must_be_boolean(self):
+        config = build_test_config(
+            redis={
+                "conn_type": "unix_sock",
+                "clustered": "true",
+            }
+        )
+        with self.assertRaisesRegex(
+            FQException, "Invalid config: redis.clustered must be a boolean"
+        ):
+            FQ(config)
+
     def test_missing_required_config_key_raises_with_path(self):
         config = build_test_config()
-        del config["redis"]["key_prefix"]
-        with self.assertRaisesRegex(FQException, "Missing config: redis.key_prefix"):
+        del config["queue"]["key_prefix"]
+        with self.assertRaisesRegex(FQException, "Missing config: queue.key_prefix"):
             FQ(config)
 
     def test_invalid_config_value_raises_with_path(self):
-        config = build_test_config(fq={"job_expire_interval": "5000"})
+        config = build_test_config(queue={"job_expire_interval": "5000"})
         with self.assertRaisesRegex(
             FQException,
-            "Invalid config: fq.job_expire_interval must be a positive integer",
+            "Invalid config: queue.job_expire_interval must be a positive integer",
         ):
             FQ(config)
+
+    def test_invalid_redis_port_range_raises(self):
+        for port in (0, -1, 65536):
+            with self.subTest(port=port):
+                config = build_test_config(redis={"port": port})
+                with self.assertRaisesRegex(
+                    FQException,
+                    "Invalid config: redis.port must be an integer between 1 and 65535",
+                ):
+                    FQ(config)
 
     async def test_dequeue_payload_none(self):
         """Covers dequeue branch where payload is None (queue.py line 212)."""
@@ -177,7 +240,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.fq_instance = fq
         await fq.initialize()
         fake_dequeue = FakeLuaDequeue()
-        fq._lua_dequeue = fake_dequeue
+        fq._scripts = SimpleNamespace(dequeue=fake_dequeue)
         result = await fq.dequeue()
         self.assertEqual(result["status"], "failure")
         self.assertTrue(fake_dequeue.called)
@@ -201,12 +264,14 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def test_deep_status_calls_set(self):
         """Covers deep_status (queue.py line 420)."""
         fq = FQ(self.config)
-        fq._key_prefix = fq.config["redis"]["key_prefix"]
         fq._r = FakeRedisForDeepStatus()
         await fq.deep_status()
         self.assertEqual(
             fq._r.key_set,
-            ("fq:deep_status:{}".format(fq._key_prefix), "sharq_deep_status"),
+            (
+                "fq:deep_status:{}".format(fq.config.queue.key_prefix),
+                "sharq_deep_status",
+            ),
         )
 
     def test_is_valid_identifier_non_string(self):
@@ -215,10 +280,54 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(is_valid_identifier(None))
         self.assertFalse(is_valid_identifier(["a"]))
 
+    def test_format_queue_ids_deduplicates_ready_and_active_queues(self):
+        queue_ids = format_queue_ids(
+            ready_queues=[b"johndoe", b"ready-only"],
+            active_queues=[b"johndoe:job-1", "active-only:job-2"],
+        )
+
+        self.assertEqual(set(queue_ids), {"johndoe", "ready-only", "active-only"})
+        self.assertEqual(len(queue_ids), 3)
+
+    def test_redis_factories_pass_password_to_unix_socket_clients(self):
+        config = FQConfig.from_mapping(
+            build_test_config(
+                redis={
+                    "conn_type": "unix_sock",
+                    "password": "socket-password",
+                }
+            )
+        )
+
+        with patch("fq.redis.AsyncRedis", RecordingRedisClient):
+            async_client = create_async_redis_client(config.redis)
+        with patch("fq.redis.SyncRedis", RecordingRedisClient):
+            sync_client = create_sync_redis_client(config.redis)
+
+        self.assertEqual(async_client.kwargs["password"], "socket-password")
+        self.assertEqual(sync_client.kwargs["password"], "socket-password")
+
+    def test_redis_factories_pass_password_to_cluster_clients(self):
+        config = FQConfig.from_mapping(
+            build_test_config(
+                redis={
+                    "clustered": True,
+                    "password": "cluster-password",
+                }
+            )
+        )
+
+        with patch("fq.redis.AsyncRedisCluster", RecordingRedisClient):
+            async_client = create_async_redis_client(config.redis)
+        with patch("fq.redis.SyncRedisCluster", RecordingRedisClient):
+            sync_client = create_sync_redis_client(config.redis)
+
+        self.assertEqual(async_client.kwargs["password"], "cluster-password")
+        self.assertEqual(sync_client.kwargs["password"], "cluster-password")
+
     async def test_clear_queue_purge_all_with_mixed_job_ids(self):
         """Covers purge_all loop branches (queue.py lines 463-468, 474-479)."""
         fq = FQ(self.config)
-        fq._key_prefix = fq.config["redis"]["key_prefix"]
         fq._r = FakeRedisForClear()
         response = await fq.clear_queue("qt", "qid", purge_all=True)
         self.assertEqual(response["status"], "Success")

@@ -4,12 +4,13 @@
 Flowdacity Queue
 ================
 
-Flowdacity Queue (FQ) is an asyncio-friendly, rate-limited job queue built on Redis. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
+Flowdacity Queue (FQ) is a rate-limited job queue built on Redis. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
 
 ## Features
 
 - Per-queue rate limiting using millisecond intervals.
-- Async Redis client with Lua scripts for predictable behavior.
+- Async and sync interfaces backed by Redis clients from redis-py.
+- Lua scripts for predictable queue behavior.
 - Automatic retries with configurable limits (including infinite retries).
 - Metrics for enqueue/dequeue counts and queue lengths.
 - Works with TCP or Unix socket Redis deployments and supports Redis Cluster.
@@ -36,31 +37,48 @@ pip install -e .
 FQ accepts a simple config mapping. Intervals are in milliseconds.
 ```python
 config = {
-    "fq": {
+    "queue": {
+        "key_prefix": "queue_server",
         "job_expire_interval": 5000,
         "job_requeue_interval": 5000,
         "default_job_requeue_limit": -1,  # -1 retries forever, 0 means no retries
     },
     "redis": {
         "db": 0,
-        "key_prefix": "queue_server",
-        "conn_type": "tcp_sock",  # or "unix_sock"
+        "conn_type": "tcp_sock",
         "host": "127.0.0.1",
         "port": 6379,
         "password": "",
         "clustered": False,
-        "unix_socket_path": "/tmp/redis.sock",
     },
 }
 ```
 
-> If you connect via Unix sockets, uncomment the `unixsocket` lines in your `redis.conf`:
+For Unix socket connections, use `conn_type: "unix_sock"` and provide
+`unix_socket_path`:
+```python
+"redis": {
+    "db": 0,
+    "conn_type": "unix_sock",
+    "unix_socket_path": "/tmp/redis.sock",
+    "password": "",
+    "clustered": False,
+}
+```
+
+> If you use Unix sockets, uncomment the `unixsocket` lines in your `redis.conf`:
 > ```
 > unixsocket /var/run/redis/redis.sock
 > unixsocketperm 755
 > ```
 
-## Quickstart
+## Async Usage
+
+Import `FQ` from the top-level package:
+
+```python
+from fq import FQ
+```
 
 ```python
 import asyncio
@@ -70,20 +88,19 @@ from fq import FQ
 
 async def main():
     config = {
-        "fq": {
+        "queue": {
+            "key_prefix": "queue_server",
             "job_expire_interval": 5000,
             "job_requeue_interval": 5000,
             "default_job_requeue_limit": -1,
         },
         "redis": {
             "db": 0,
-            "key_prefix": "queue_server",
             "conn_type": "tcp_sock",
             "host": "127.0.0.1",
             "port": 6379,
             "password": "",
             "clustered": False,
-            "unix_socket_path": "/tmp/redis.sock",
         },
     }
 
@@ -114,12 +131,63 @@ async def main():
 asyncio.run(main())
 ```
 
-Common operations:
+## Sync Usage
+
+Import `FQ` from `fq.sync`:
+
+```python
+import uuid
+from fq.sync import FQ
+
+
+config = {
+    "queue": {
+        "key_prefix": "queue_server",
+        "job_expire_interval": 5000,
+        "job_requeue_interval": 5000,
+        "default_job_requeue_limit": -1,
+    },
+    "redis": {
+        "db": 0,
+        "conn_type": "tcp_sock",
+        "host": "127.0.0.1",
+        "port": 6379,
+        "password": "",
+        "clustered": False,
+    },
+}
+
+fq = FQ(config)
+fq.initialize()
+
+job_id = str(uuid.uuid4())
+fq.enqueue(
+    payload={"message": "hello, world"},
+    interval=1000,
+    job_id=job_id,
+    queue_id="user001",
+    queue_type="sms",
+)
+
+job = fq.dequeue(queue_type="sms")
+if job["status"] == "success":
+    fq.finish(
+        queue_type="sms",
+        queue_id=job["queue_id"],
+        job_id=job["job_id"],
+    )
+
+fq.close()
+```
+
+## Common Operations
 
 - `await fq.requeue()` — move expired jobs back onto their queues.
 - `await fq.interval(interval=5000, queue_id="user001", queue_type="sms")` — change a queue’s rate limit on the fly.
 - `await fq.metrics()` — global metrics; pass `queue_type` and/or `queue_id` for scoped stats and queue length.
 - `await fq.clear_queue(queue_type="sms", queue_id="user001", purge_all=True)` — drop queued jobs and their payload/interval metadata.
+
+The same operations are available from `fq.sync.FQ` without `await`.
 
 ## Development
 

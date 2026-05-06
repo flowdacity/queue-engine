@@ -74,9 +74,8 @@ def convert_to_str(queue_set):
     """Takes set and decodes bytes to string"""
     queue_list = []
     for queue in list(queue_set):
-        try:
+        if isinstance(queue, (bytes, bytearray)):
             queue_list.append(queue.decode("utf-8"))
-        except Exception as e:
+        else:
             queue_list.append(queue)
-            pass
     return queue_list

@@ -11,6 +11,7 @@ from tests.config import build_test_config
 class FQTest(unittest.IsolatedAsyncioTestCase):
     """The FQTest contains test cases which validate the FQ interface."""
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
         self.queue = FQ(build_test_config())
         await self.queue.initialize()
@@ -58,6 +59,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
         # flush redis before start
         await self.queue._r.flushdb()
 
+    # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncTearDown(self):
         # flush redis at the end and close connection
         await self.queue._r.flushdb()
@@ -322,7 +324,9 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_enqueue_cannot_serialize_payload(self):
-        with self.assertRaisesRegex(BadArgumentException, r"can not serialize."):
+        with self.assertRaisesRegex(
+            BadArgumentException, r"can not serialize."
+        ) as ctx:
             await self.queue.enqueue(
                 payload=self.invalid_payload,
                 interval=self.valid_interval,
@@ -330,6 +334,7 @@ class FQTest(unittest.IsolatedAsyncioTestCase):
                 queue_id=self.valid_queue_id,
                 queue_type=self.valid_queue_type,
             )
+        self.assertIsInstance(ctx.exception.__cause__, TypeError)
 
     async def test_enqueue_all_ok(self):
         # with a queue_type
