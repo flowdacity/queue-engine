@@ -45,17 +45,28 @@ config = {
     },
     "redis": {
         "db": 0,
-        "conn_type": "tcp_sock",  # or "unix_sock"
+        "conn_type": "tcp_sock",
         "host": "127.0.0.1",
         "port": 6379,
         "password": "",
         "clustered": False,
-        "unix_socket_path": "/tmp/redis.sock",
     },
 }
 ```
 
-> If you connect via Unix sockets, uncomment the `unixsocket` lines in your `redis.conf`:
+For Unix socket connections, use `conn_type: "unix_sock"` and provide
+`unix_socket_path`:
+```python
+"redis": {
+    "db": 0,
+    "conn_type": "unix_sock",
+    "unix_socket_path": "/tmp/redis.sock",
+    "password": "",
+    "clustered": False,
+}
+```
+
+> If you use Unix sockets, uncomment the `unixsocket` lines in your `redis.conf`:
 > ```
 > unixsocket /var/run/redis/redis.sock
 > unixsocketperm 755
@@ -90,7 +101,6 @@ async def main():
             "port": 6379,
             "password": "",
             "clustered": False,
-            "unix_socket_path": "/tmp/redis.sock",
         },
     }
 
@@ -144,7 +154,6 @@ config = {
         "port": 6379,
         "password": "",
         "clustered": False,
-        "unix_socket_path": "/tmp/redis.sock",
     },
 }
 

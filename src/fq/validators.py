@@ -49,8 +49,8 @@ def validate_enqueue_arguments(
 
     try:
         serialized_payload = serialize_payload(payload)
-    except TypeError:
-        raise BadArgumentException("can not serialize.")
+    except TypeError as exc:
+        raise BadArgumentException("can not serialize.") from exc
 
     return EnqueueArguments(
         serialized_payload=serialized_payload,
