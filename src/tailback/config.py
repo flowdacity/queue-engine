@@ -3,6 +3,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any, Self
 
 from tailback.exceptions import TailbackException
 from tailback.utils import is_valid_interval, is_valid_requeue_limit
@@ -22,7 +23,7 @@ class RedisConfig:
     password: str | None = None
 
     @classmethod
-    def from_mapping(cls, config):
+    def from_mapping(cls, config: Mapping[str, Any]) -> Self:
         cls._validate_required(config)
         cls._validate_connection(config)
         cls._validate_optional(config)
@@ -38,7 +39,7 @@ class RedisConfig:
         )
 
     @classmethod
-    def _validate_required(cls, config):
+    def _validate_required(cls, config: Mapping[str, Any]) -> None:
         conn_type = cls._require_value(config, "conn_type")
         if conn_type not in REDIS_CONN_TYPES:
             raise TailbackException(
@@ -50,7 +51,7 @@ class RedisConfig:
             raise TailbackException("Invalid config: redis.db must be an integer")
 
     @classmethod
-    def _validate_connection(cls, config):
+    def _validate_connection(cls, config: Mapping[str, Any]) -> None:
         cls._validate_clustered(config)
 
         if config["conn_type"] == "unix_sock":
@@ -60,12 +61,12 @@ class RedisConfig:
         cls._validate_tcp_socket(config)
 
     @classmethod
-    def _validate_clustered(cls, config):
+    def _validate_clustered(cls, config: Mapping[str, Any]) -> None:
         if "clustered" in config and not isinstance(config["clustered"], bool):
             raise TailbackException("Invalid config: redis.clustered must be a boolean")
 
     @classmethod
-    def _validate_unix_socket(cls, config):
+    def _validate_unix_socket(cls, config: Mapping[str, Any]) -> None:
         unix_socket_path = cls._require_value(config, "unix_socket_path")
         if not cls._is_non_empty_string(unix_socket_path):
             raise TailbackException(
@@ -73,10 +74,12 @@ class RedisConfig:
             )
 
     @classmethod
-    def _validate_tcp_socket(cls, config):
+    def _validate_tcp_socket(cls, config: Mapping[str, Any]) -> None:
         host = cls._require_value(config, "host")
         if not cls._is_non_empty_string(host):
-            raise TailbackException("Invalid config: redis.host must be a non-empty string")
+            raise TailbackException(
+                "Invalid config: redis.host must be a non-empty string"
+            )
 
         port = cls._require_value(config, "port")
         if not cls._is_int_not_bool(port):
@@ -88,24 +91,26 @@ class RedisConfig:
             )
 
     @classmethod
-    def _validate_optional(cls, config):
+    def _validate_optional(cls, config: Mapping[str, Any]) -> None:
         if "password" in config and config["password"] is not None:
             if not isinstance(config["password"], str):
-                raise TailbackException("Invalid config: redis.password must be a string")
+                raise TailbackException(
+                    "Invalid config: redis.password must be a string"
+                )
 
     @staticmethod
-    def _require_value(config, option_name):
+    def _require_value(config: Mapping[str, Any], option_name: str) -> Any:
         if option_name not in config:
             raise TailbackException("Missing config: redis.%s" % option_name)
 
         return config[option_name]
 
     @staticmethod
-    def _is_non_empty_string(value):
+    def _is_non_empty_string(value: object) -> bool:
         return isinstance(value, str) and bool(value)
 
     @staticmethod
-    def _is_int_not_bool(value):
+    def _is_int_not_bool(value: object) -> bool:
         return isinstance(value, int) and not isinstance(value, bool)
 
 
@@ -117,7 +122,7 @@ class QueueConfig:
     default_job_requeue_limit: int
 
     @classmethod
-    def from_mapping(cls, config):
+    def from_mapping(cls, config: Mapping[str, Any]) -> Self:
         cls._validate_required(config)
 
         return cls(
@@ -128,7 +133,7 @@ class QueueConfig:
         )
 
     @classmethod
-    def _validate_required(cls, config):
+    def _validate_required(cls, config: Mapping[str, Any]) -> None:
         key_prefix = cls._require_value(config, "key_prefix")
         if not cls._is_non_empty_string(key_prefix):
             raise TailbackException(
@@ -151,14 +156,14 @@ class QueueConfig:
             )
 
     @staticmethod
-    def _require_value(config, option_name):
+    def _require_value(config: Mapping[str, Any], option_name: str) -> Any:
         if option_name not in config:
             raise TailbackException("Missing config: queue.%s" % option_name)
 
         return config[option_name]
 
     @staticmethod
-    def _is_non_empty_string(value):
+    def _is_non_empty_string(value: object) -> bool:
         return isinstance(value, str) and bool(value)
 
 
@@ -168,7 +173,7 @@ class TailbackConfig:
     queue: QueueConfig
 
     @classmethod
-    def from_mapping(cls, config):
+    def from_mapping(cls, config: Mapping[str, Any]) -> Self:
         normalized = cls._normalize_sections(config)
         cls._require_sections(normalized)
 
@@ -178,11 +183,13 @@ class TailbackConfig:
         )
 
     @staticmethod
-    def _normalize_sections(config):
+    def _normalize_sections(config: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
         if not isinstance(config, Mapping):
-            raise TailbackException("Config must be a mapping with redis and queue sections")
+            raise TailbackException(
+                "Config must be a mapping with redis and queue sections"
+            )
 
-        normalized = {}
+        normalized: dict[str, dict[str, Any]] = {}
         for section_name, section_values in config.items():
             if not isinstance(section_values, Mapping):
                 raise TailbackException(
@@ -196,6 +203,6 @@ class TailbackConfig:
         return normalized
 
     @staticmethod
-    def _require_sections(config):
+    def _require_sections(config: Mapping[str, Any]) -> None:
         if "redis" not in config or "queue" not in config:
             raise TailbackException("Config missing required sections: redis, queue")
