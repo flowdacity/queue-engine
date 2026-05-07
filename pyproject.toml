@@ -7,6 +7,7 @@ license = "MIT"
 authors = [{ name = "Flowdacity" }]
 requires-python = ">=3.12"
 keywords = [
+    "flowdacity",
     "queue",
     "job queue",
     "task queue",
@@ -20,7 +21,7 @@ keywords = [
     "leaky bucket",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -31,6 +32,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Distributed Computing",
     "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = ["msgpack>=1.1.2", "redis[hiredis]>=7.1.0"]
 
