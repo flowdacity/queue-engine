@@ -1,37 +1,57 @@
 [project]
 name = "tailback"
 dynamic = ["version"]
-description = "A simple Redis-based job queue system."
+description = "A Redis-backed Python job queue with rate limiting, delayed jobs, retries, and real-time queue control."
 readme = "README.md"
-license = {text = "MIT"}
-authors = [{name = "Flowdacity Development Team", email = "admin@flowdacity.com"}]
+license = "MIT"
+authors = [{ name = "Flowdacity" }]
 requires-python = ">=3.12"
-dependencies = [
-    "msgpack>=1.1.2",
-    "redis[hiredis]>=7.1.0",
+keywords = [
+    "queue",
+    "job queue",
+    "task queue",
+    "redis",
+    "redis queue",
+    "rate limit",
+    "rate limiting",
+    "delayed jobs",
+    "background jobs",
+    "worker",
+    "leaky bucket",
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Utilities",
+]
+dependencies = ["msgpack>=1.1.2", "redis[hiredis]>=7.1.0"]
+
+[project.urls]
+Homepage = "https://github.com/flowdacity/tailback"
+Repository = "https://github.com/flowdacity/tailback"
+Issues = "https://github.com/flowdacity/tailback/issues"
+Changelog = "https://github.com/flowdacity/tailback/releases"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = [
-    "build>=1.3.0",
-    "pytest>=9.0.1",
-    "pytest-cov>=7.0.0",
-    "twine>=5.1.1",
-]
+dev = ["build>=1.3.0", "pytest>=9.0.1", "pytest-cov>=7.0.0", "twine>=5.1.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tailback"]
 
 [tool.hatch.build.targets.sdist]
-include = [
-  "src/tailback",
-  "README.md",
-  "LICENSE.txt",
-]
+include = ["src/tailback", "README.md", "LICENSE.txt"]
 
 [tool.hatch.version]
 source = "vcs"
