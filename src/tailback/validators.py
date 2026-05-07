@@ -2,6 +2,7 @@
 # Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 from tailback.exceptions import BadArgumentException
 from tailback.utils import (
@@ -26,14 +27,14 @@ class EnqueueArguments:
 
 
 def validate_enqueue_arguments(
-    payload,
-    interval,
-    job_id,
-    queue_id,
-    queue_type,
-    requeue_limit,
-    default_requeue_limit,
-):
+    payload: Any,
+    interval: object,
+    job_id: object,
+    queue_id: object,
+    queue_type: object,
+    requeue_limit: object | None,
+    default_requeue_limit: int,
+) -> EnqueueArguments:
     if not is_valid_interval(interval):
         raise BadArgumentException(INVALID_INTERVAL)
 
@@ -46,6 +47,7 @@ def validate_enqueue_arguments(
 
     if not is_valid_requeue_limit(requeue_limit):
         raise BadArgumentException(INVALID_REQUEUE_LIMIT)
+    requeue_limit = cast(int, requeue_limit)
 
     try:
         serialized_payload = serialize_payload(payload)
@@ -58,17 +60,25 @@ def validate_enqueue_arguments(
     )
 
 
-def validate_dequeue_arguments(queue_type):
+def validate_dequeue_arguments(queue_type: object) -> None:
     _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
 
 
-def validate_finish_arguments(job_id, queue_id, queue_type):
+def validate_finish_arguments(
+    job_id: object,
+    queue_id: object,
+    queue_type: object,
+) -> None:
     _validate_identifier(job_id, INVALID_JOB_ID)
     _validate_identifier(queue_id, INVALID_QUEUE_ID)
     _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
 
 
-def validate_interval_arguments(interval, queue_id, queue_type):
+def validate_interval_arguments(
+    interval: object,
+    queue_id: object,
+    queue_type: object,
+) -> None:
     if not is_valid_interval(interval):
         raise BadArgumentException(INVALID_INTERVAL)
 
@@ -76,7 +86,10 @@ def validate_interval_arguments(interval, queue_id, queue_type):
     _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
 
 
-def validate_metrics_arguments(queue_type, queue_id):
+def validate_metrics_arguments(
+    queue_type: object | None,
+    queue_id: object | None,
+) -> None:
     if queue_id is not None and not is_valid_identifier(queue_id):
         raise BadArgumentException(INVALID_QUEUE_ID)
 
@@ -84,7 +97,10 @@ def validate_metrics_arguments(queue_type, queue_id):
         raise BadArgumentException(INVALID_QUEUE_TYPE)
 
 
-def validate_clear_queue_arguments(queue_type, queue_id):
+def validate_clear_queue_arguments(
+    queue_type: object | None,
+    queue_id: object | None,
+) -> None:
     if queue_id is None or not is_valid_identifier(queue_id):
         raise BadArgumentException(INVALID_QUEUE_ID)
 
@@ -92,11 +108,11 @@ def validate_clear_queue_arguments(queue_type, queue_id):
         raise BadArgumentException(INVALID_QUEUE_TYPE)
 
 
-def validate_get_queue_length_arguments(queue_type, queue_id):
+def validate_get_queue_length_arguments(queue_type: object, queue_id: object) -> None:
     _validate_identifier(queue_type, INVALID_QUEUE_TYPE)
     _validate_identifier(queue_id, INVALID_QUEUE_ID)
 
 
-def _validate_identifier(identifier, message):
+def _validate_identifier(identifier: object, message: str) -> None:
     if not is_valid_identifier(identifier):
         raise BadArgumentException(message)

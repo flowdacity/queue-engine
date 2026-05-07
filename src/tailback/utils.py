@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
 import time
+from collections.abc import Iterable
+from typing import Any
+
 import msgpack
 
-VALID_IDENTIFIER_SET = set(list("abcdefghijklmnopqrstuvwxyz0123456789_-"))
+VALID_IDENTIFIER_SET: set[str] = set(list("abcdefghijklmnopqrstuvwxyz0123456789_-"))
 
 
-def is_valid_identifier(identifier):
+def is_valid_identifier(identifier: object) -> bool:
     """Checks if the given identifier is valid or not. A valid
     identifier may consists of the following characters with a
     maximum length of 100 characters, minimum of 1 character.
@@ -28,14 +31,14 @@ def is_valid_identifier(identifier):
     return condensed_form.issubset(VALID_IDENTIFIER_SET)
 
 
-def is_valid_interval(interval):
+def is_valid_interval(interval: object) -> bool:
     """Checks if the given interval is valid. A valid interval
     is always a positive, non-zero integer value.
     """
     return isinstance(interval, int) and interval > 0
 
 
-def is_valid_requeue_limit(requeue_limit):
+def is_valid_requeue_limit(requeue_limit: object) -> bool:
     """Checks if the given requeue limit is valid.
     A valid requeue limit is always greater than
     or equal to -1.
@@ -49,14 +52,14 @@ def is_valid_requeue_limit(requeue_limit):
     return True
 
 
-def serialize_payload(payload):
+def serialize_payload(payload: Any) -> bytes:
     """Tries to serialize the payload using msgpack. If it is
     not serializable, raises a TypeError.
     """
     return msgpack.packb(payload, use_bin_type=True)
 
 
-def deserialize_payload(payload):
+def deserialize_payload(payload: bytes) -> Any:
     """Tries to deserialize the payload using msgpack."""
     # Handle older Tailback payloads as well (before py3 migration)
     if payload.startswith(b'"') and payload.endswith(b'"'):
@@ -65,12 +68,12 @@ def deserialize_payload(payload):
     return msgpack.unpackb(payload, raw=False)
 
 
-def generate_epoch():
+def generate_epoch() -> int:
     """Generates an unix epoch in ms."""
     return int(time.time() * 1000)
 
 
-def convert_to_str(queue_set):
+def convert_to_str(queue_set: Iterable[str | bytes | bytearray]) -> list[str]:
     """Takes set and decodes bytes to string"""
     queue_list = []
     for queue in list(queue_set):

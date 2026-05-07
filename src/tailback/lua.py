@@ -3,20 +3,20 @@
 
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Self
 
 
 @dataclass(frozen=True)
 class LuaScripts:
-    enqueue: Any
-    dequeue: Any
-    finish: Any
-    interval: Any
-    requeue: Any
-    metrics: Any
+    enqueue: Callable[..., Any]
+    dequeue: Callable[..., Any]
+    finish: Callable[..., Any]
+    interval: Callable[..., Any]
+    requeue: Callable[..., Any]
+    metrics: Callable[..., Any]
 
     @classmethod
-    def register(cls, redis_client):
+    def register(cls, redis_client: Any) -> Self:
         registered_scripts = {
             script_field.name: redis_client.register_script(
                 cls._read_script(script_field.name)
@@ -26,7 +26,7 @@ class LuaScripts:
         return cls(**registered_scripts)
 
     @staticmethod
-    def _read_script(script_name):
+    def _read_script(script_name: str) -> str:
         script_path = (
             Path(__file__).with_name("scripts") / "lua" / ("%s.lua" % script_name)
         )

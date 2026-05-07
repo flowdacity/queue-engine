@@ -3,6 +3,7 @@
 #  Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
 
 import asyncio
+from typing import Any
 
 from tailback.base import BaseTailback
 from tailback.lua import LuaScripts
@@ -12,28 +13,28 @@ from tailback.redis import create_async_redis_client, validate_async_redis_conne
 class Tailback(BaseTailback):
     """Async Tailback API."""
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Set up the async Redis client and register Lua scripts."""
         self._r = create_async_redis_client(self.config.redis)
         await validate_async_redis_connection(self._r)
         self._register_lua_scripts()
 
-    def _register_lua_scripts(self):
+    def _register_lua_scripts(self) -> None:
         self._scripts = LuaScripts.register(self._r)
 
-    def reload_lua_scripts(self):
+    def reload_lua_scripts(self) -> None:
         """Lets user reload the Lua scripts at run time."""
         self._register_lua_scripts()
 
     async def enqueue(
         self,
-        payload,
-        interval,
-        job_id,
-        queue_id,
-        queue_type="default",
-        requeue_limit=None,
-    ):
+        payload: Any,
+        interval: int,
+        job_id: str,
+        queue_id: str,
+        queue_type: str = "default",
+        requeue_limit: int | None = None,
+    ) -> dict[str, str]:
         """Enqueue a job into the specified queue_id and queue_type."""
         keys, args = self._build_enqueue_call(
             payload,
@@ -46,25 +47,35 @@ class Tailback(BaseTailback):
         await self._scripts.enqueue(keys=keys, args=args)
         return {"status": "queued"}
 
-    async def dequeue(self, queue_type="default"):
+    async def dequeue(self, queue_type: str = "default") -> dict[str, Any]:
         """Dequeue a ready job for queue_type, or return failure."""
         keys, args = self._build_dequeue_call(queue_type)
         dequeue_response = await self._scripts.dequeue(keys=keys, args=args)
         return self._dequeue_response(dequeue_response)
 
-    async def finish(self, job_id, queue_id, queue_type="default"):
+    async def finish(
+        self,
+        job_id: str,
+        queue_id: str,
+        queue_type: str = "default",
+    ) -> dict[str, str]:
         """Mark a dequeued job as completed successfully."""
         keys, args = self._build_finish_call(job_id, queue_id, queue_type)
         finish_response = await self._scripts.finish(keys=keys, args=args)
         return self._finish_response(finish_response)
 
-    async def interval(self, interval, queue_id, queue_type="default"):
+    async def interval(
+        self,
+        interval: int,
+        queue_id: str,
+        queue_type: str = "default",
+    ) -> dict[str, str]:
         """Update the interval for a queue_id and queue_type."""
         keys, args = self._build_interval_call(interval, queue_id, queue_type)
         interval_response = await self._scripts.interval(keys=keys, args=args)
         return self._interval_response(interval_response)
 
-    async def requeue(self):
+    async def requeue(self) -> None:
         """Re-queue expired active jobs back into their ready queues."""
         timestamp = self._current_timestamp()
         active_queue_type_list = await self._r.smembers(self._keys.active_queue_types)
@@ -80,7 +91,11 @@ class Tailback(BaseTailback):
                     queue_type=queue_type,
                 )
 
-    async def metrics(self, queue_type=None, queue_id=None):
+    async def metrics(
+        self,
+        queue_type: str | None = None,
+        queue_id: str | None = None,
+    ) -> dict[str, Any]:
         """Return global, queue-type, or queue-specific metrics."""
         self._validate_metrics_call(queue_type, queue_id)
 
@@ -127,14 +142,19 @@ class Tailback(BaseTailback):
 
         return {"status": "failure"}
 
-    async def deep_status(self):
+    async def deep_status(self) -> Any:
         """
         Check Redis availability. If Redis is down, set() will raise.
         :return: value or None
         """
         return await self._r.set(self._keys.deep_status, "sharq_deep_status")
 
-    async def clear_queue(self, queue_type=None, queue_id=None, purge_all=False):
+    async def clear_queue(
+        self,
+        queue_type: str | None = None,
+        queue_id: str | None = None,
+        purge_all: bool = False,
+    ) -> dict[str, str]:
         """Clear entries in a queue and optionally purge related resources."""
         plan = self._clear_queue_plan(queue_type, queue_id)
 
@@ -160,14 +180,14 @@ class Tailback(BaseTailback):
         await self._r.delete(plan.job_queue)
         return response
 
-    async def get_queue_length(self, queue_type, queue_id):
+    async def get_queue_length(self, queue_type: str, queue_id: str) -> int:
         """
         Return the current Redis list length for key_prefix:queue_type:queue_id.
         """
         redis_key = self._queue_length_key(queue_type, queue_id)
         return await self._r.llen(redis_key)
 
-    async def close(self):
+    async def close(self) -> None:
         """Cleanly close the underlying Redis client or connection pool."""
         if self._r is None:
             return
